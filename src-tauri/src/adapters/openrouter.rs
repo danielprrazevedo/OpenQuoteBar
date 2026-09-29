@@ -9,10 +9,8 @@
 //!
 //! Which one to use comes from `key_type` in `config.toml`.
 
-use std::time::Duration;
-
 use async_trait::async_trait;
-use reqwest::{header::HeaderMap, Client, Response, StatusCode};
+use reqwest::{Client, StatusCode};
 use serde::{de::DeserializeOwned, Deserialize};
 
 use crate::core::{
@@ -20,7 +18,10 @@ use crate::core::{
     types::{BalanceAmount, BalanceSnapshot},
 };
 
-use super::{AdapterError, Credentials, ProviderAdapter};
+use super::{
+    http::{error_message, map_transport, parse_retry_after, unix_now},
+    AdapterError, Credentials, ProviderAdapter,
+};
 
 /// Stable provider id, matching `config.toml`.
 pub const ID: &str = "openrouter";
@@ -211,64 +212,11 @@ struct KeyData {
     limit_remaining: Option<f64>,
 }
 
-/// Shape of an error body: `{ "error": { "message": ... } }`.
-#[derive(Debug, Deserialize)]
-struct ErrorEnvelope {
-    error: Option<ErrorBody>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ErrorBody {
-    message: Option<String>,
-}
-
-/// Classifies a transport failure. A timeout is worth telling apart, because
-/// it is retried differently from a hard network error.
-fn map_transport(error: reqwest::Error) -> AdapterError {
-    if error.is_timeout() {
-        AdapterError::Timeout
-    } else {
-        AdapterError::Network(error.to_string())
-    }
-}
-
-/// Reads `Retry-After`, when it is expressed in seconds.
-///
-/// The HTTP-date form (allowed by RFC 9110) is not parsed; callers then fall
-/// back to their own backoff.
-fn parse_retry_after(headers: &HeaderMap) -> Option<Duration> {
-    headers
-        .get(reqwest::header::RETRY_AFTER)?
-        .to_str()
-        .ok()?
-        .trim()
-        .parse::<u64>()
-        .ok()
-        .map(Duration::from_secs)
-}
-
-/// Extracts a human message from an error body, falling back to the raw body.
-/// The body is truncated so a stray HTML page cannot flood the UI.
-async fn error_message(response: Response) -> String {
-    let body = response.text().await.unwrap_or_default();
-
-    serde_json::from_str::<ErrorEnvelope>(&body)
-        .ok()
-        .and_then(|envelope| envelope.error)
-        .and_then(|error| error.message)
-        .unwrap_or_else(|| body.chars().take(200).collect())
-}
-
-fn unix_now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|since_epoch| since_epoch.as_secs() as i64)
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
     use wiremock::matchers::{bearer_token, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 

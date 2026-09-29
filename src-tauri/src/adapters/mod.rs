@@ -4,6 +4,8 @@
 //! never touches the core or the UI. Nothing in this module depends on Tauri,
 //! which keeps the adapters unit-testable.
 
+pub mod deepseek;
+mod http;
 pub mod openrouter;
 
 use std::time::Duration;
@@ -100,6 +102,7 @@ pub trait ProviderAdapter: Send + Sync + std::fmt::Debug {
 pub fn adapter_for(provider_id: &str, http: &Client) -> Option<Box<dyn ProviderAdapter>> {
     match provider_id {
         openrouter::ID => Some(Box::new(openrouter::OpenRouterAdapter::with_client(http))),
+        deepseek::ID => Some(Box::new(deepseek::DeepSeekAdapter::with_client(http))),
         _ => None,
     }
 }
@@ -157,13 +160,41 @@ mod tests {
     }
 
     #[test]
-    fn unknown_providers_are_rejected() {
-        let config = config_with(vec![provider("deepseek")]);
+    fn a_provider_absent_from_the_config_is_rejected() {
+        let config = config_with(vec![provider(openrouter::ID)]);
         let secrets = MemoryStore::default();
         let http = Client::new();
 
-        let error = resolve(&config, &secrets, &http, "deepseek").expect_err("should fail");
-        assert!(matches!(error, AdapterError::UnknownProvider(id) if id == "deepseek"));
+        let error = resolve(&config, &secrets, &http, "nope").expect_err("should fail");
+        assert!(matches!(error, AdapterError::UnknownProvider(id) if id == "nope"));
+    }
+
+    #[test]
+    fn a_provider_with_no_bundled_adapter_is_rejected() {
+        let config = config_with(vec![provider("acme")]);
+        let secrets = MemoryStore::default();
+        let http = Client::new();
+
+        let error = resolve(&config, &secrets, &http, "acme").expect_err("should fail");
+        assert!(matches!(error, AdapterError::UnknownProvider(id) if id == "acme"));
+    }
+
+    #[test]
+    fn every_bundled_adapter_resolves() {
+        let http = Client::new();
+
+        for expected in [openrouter::ID, deepseek::ID] {
+            let config = config_with(vec![provider(expected)]);
+            let secrets = MemoryStore::default();
+            secrets.set(expected, "sk-secret").expect("should store");
+
+            let (adapter, credentials) =
+                resolve(&config, &secrets, &http, expected).expect("should resolve");
+
+            assert_eq!(adapter.id(), expected);
+            assert!(!adapter.display_name().is_empty());
+            assert_eq!(credentials.api_key, "sk-secret");
+        }
     }
 
     #[test]

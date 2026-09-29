@@ -82,7 +82,9 @@ provider entries are not.
 Each provider row in Settings also has a **Test** button, which fetches the current balance using the
 stored key and reports either the amount or the reason it failed. The provider adapters live in
 `src-tauri/src/adapters/`; each one is behind the same `ProviderAdapter` trait and returns a
-normalized `BalanceSnapshot`, so the UI never has to know how a provider expresses "balance".
+normalized `BalanceSnapshot`, so the UI never has to know how a provider expresses "balance". A
+snapshot carries one amount per currency — DeepSeek can report both USD and CNY — and amounts in
+different currencies are never summed together.
 
 ## Project layout
 
