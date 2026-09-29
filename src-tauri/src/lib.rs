@@ -28,7 +28,7 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState)
+        .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             ui::app_info,
             ui::get_preferences,
@@ -39,6 +39,7 @@ pub fn run() {
             ui::set_provider_enabled,
             ui::set_provider_key,
             ui::delete_provider_key,
+            ui::fetch_provider_balance,
         ])
         .setup(|app| {
             // Tray-only apps have no visible window, which macOS treats as an

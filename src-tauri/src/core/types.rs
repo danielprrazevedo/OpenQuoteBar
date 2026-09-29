@@ -1,8 +1,4 @@
 //! Domain types shared across the application.
-//!
-//! The provider balance types (normalized snapshots, currency, provider
-//! identity) arrive with the adapter trait in issue #5. This module starts with
-//! the app metadata the frontend reads on boot.
 
 use serde::Serialize;
 
@@ -15,4 +11,25 @@ pub struct AppInfo {
     pub version: String,
     /// Bundle identifier (reverse-DNS).
     pub identifier: String,
+}
+
+/// A provider's balance at a point in time, normalized across providers.
+///
+/// Every adapter returns this shape, so the UI never has to know how a given
+/// provider expresses "balance".
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceSnapshot {
+    /// Provider identifier, matching `config.toml`.
+    pub provider_id: String,
+    /// Human-readable provider name.
+    pub display_name: String,
+    /// How much is available, expressed in [`currency`](Self::currency).
+    pub amount: f64,
+    /// ISO 4217 code the amount is expressed in.
+    pub currency: String,
+    /// What the amount represents, e.g. "Credits remaining".
+    pub label: String,
+    /// Unix timestamp, in seconds, of when the value was fetched.
+    pub fetched_at: i64,
 }

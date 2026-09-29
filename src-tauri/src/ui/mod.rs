@@ -6,14 +6,19 @@
 pub mod tray;
 
 use serde::Serialize;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
-use crate::core::{
-    autostart,
-    config::{self, KeyType},
-    preferences,
-    secrets::{KeyringStore, SecretStore},
-    AppInfo,
+use crate::{
+    adapters,
+    core::{
+        autostart,
+        config::{self, KeyType},
+        preferences,
+        secrets::{KeyringStore, SecretStore},
+        state::AppState,
+        types::BalanceSnapshot,
+        AppInfo,
+    },
 };
 
 /// Returns static information about the running application.
@@ -126,5 +131,24 @@ pub fn set_provider_key(provider_id: String, key: String) -> Result<(), String> 
 pub fn delete_provider_key(provider_id: String) -> Result<(), String> {
     KeyringStore
         .delete(&provider_id)
+        .map_err(|error| error.to_string())
+}
+
+/// Fetches the current balance of one provider, using its stored key.
+#[tauri::command]
+pub async fn fetch_provider_balance(
+    app: AppHandle,
+    provider_id: String,
+) -> Result<BalanceSnapshot, String> {
+    // Cloning the client drops the state guard before we await the request.
+    let http = app.state::<AppState>().http.clone();
+    let config = config::load(&app).map_err(|error| error.to_string())?;
+
+    let (adapter, credentials) = adapters::resolve(&config, &KeyringStore, &http, &provider_id)
+        .map_err(|error| error.to_string())?;
+
+    adapter
+        .fetch_balance(&credentials)
+        .await
         .map_err(|error| error.to_string())
 }
