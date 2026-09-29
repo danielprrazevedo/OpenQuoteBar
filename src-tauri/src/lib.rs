@@ -35,6 +35,10 @@ pub fn run() {
             ui::set_open_window_on_start,
             ui::get_launch_at_login,
             ui::set_launch_at_login,
+            ui::get_providers,
+            ui::set_provider_enabled,
+            ui::set_provider_key,
+            ui::delete_provider_key,
         ])
         .setup(|app| {
             // Tray-only apps have no visible window, which macOS treats as an

@@ -1,0 +1,26 @@
+# OpenQuoteBar configuration.
+#
+# This file lists the LLM API providers whose balance the app should read.
+# It is created automatically on first run, and it is meant to be edited by hand.
+#
+# API keys are NOT stored here. They live in the operating system credential
+# store (macOS Keychain, Windows Credential Manager) under the service
+# "com.openquotebar.app", one entry per provider id. Use the Settings view in
+# the app to add, replace or remove a key.
+#
+# Each provider is a [[providers]] entry:
+#
+#   id        Stable identifier. It must match an adapter bundled with the app.
+#   enabled   Whether the app reads this provider's balance.
+#   key_type  OpenRouter only. "management" reads the account-wide credits
+#             endpoint (GET /api/v1/credits); "standard" reads the per-key
+#             limit (GET /api/v1/key). Omit it for other providers.
+
+[[providers]]
+id = "openrouter"
+enabled = true
+key_type = "management"
+
+[[providers]]
+id = "deepseek"
+enabled = true
