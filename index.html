@@ -8,75 +8,69 @@
     <script type="module" src="/src/main.ts" defer></script>
   </head>
 
+  <!--
+    No user-visible text lives here: every string comes from src/strings.ts, so
+    there is a single place to touch when another language is added.
+  -->
   <body>
     <main class="shell">
       <section class="view" id="view-balance">
         <header class="view__header">
           <span class="mark" aria-hidden="true">$</span>
-          <h1 class="view__title">OpenQuoteBar</h1>
+          <h1 class="view__title" id="balance-title"></h1>
+          <button class="link link--end" type="button" id="refresh"></button>
         </header>
 
-        <p class="lead" id="app-info">Connecting to the backend…</p>
-        <p class="hint">
-          Provider balances are not wired up yet. The adapters and the details window land with the
-          next issues.
-        </p>
+        <div class="hero">
+          <span class="hero__label" id="total-label"></span>
+          <div class="hero__totals" id="totals"></div>
+          <span class="hero__meta" id="balance-meta"></span>
+        </div>
+
+        <ul class="balances" id="balance-providers" aria-live="polite"></ul>
+
+        <p class="hint hint--status" id="balance-status" role="status"></p>
 
         <footer class="view__footer">
-          <button class="link" type="button" data-navigate="settings">Settings</button>
+          <span class="meta" id="balance-footer"></span>
+          <button class="link link--end" type="button" id="open-settings"></button>
         </footer>
       </section>
 
       <section class="view" id="view-settings" hidden>
         <header class="view__header">
-          <h1 class="view__title">Settings</h1>
-          <button class="link link--end" type="button" data-navigate="balance">Back</button>
+          <h1 class="view__title" id="settings-title"></h1>
+          <button class="link link--end" type="button" id="close-settings"></button>
         </header>
 
-        <h2 class="section__title">General</h2>
+        <h2 class="section__title" id="settings-general"></h2>
         <ul class="settings">
           <li class="setting">
             <span class="setting__text">
-              <span class="setting__label">Open window on launch</span>
-              <span class="setting__hint">
-                Start with the details window instead of the menu bar icon alone.
-              </span>
+              <span class="setting__label" id="open-window-on-start-label"></span>
+              <span class="setting__hint" id="open-window-on-start-hint"></span>
             </span>
-            <input
-              class="switch"
-              type="checkbox"
-              id="open-window-on-start"
-              aria-label="Open window on launch"
-            />
+            <input class="switch" type="checkbox" id="open-window-on-start" />
           </li>
 
           <li class="setting">
             <span class="setting__text">
-              <span class="setting__label">Launch at login</span>
-              <span class="setting__hint">Start OpenQuoteBar automatically when you log in.</span>
+              <span class="setting__label" id="launch-at-login-label"></span>
+              <span class="setting__hint" id="launch-at-login-hint"></span>
             </span>
-            <input
-              class="switch"
-              type="checkbox"
-              id="launch-at-login"
-              aria-label="Launch at login"
-            />
+            <input class="switch" type="checkbox" id="launch-at-login" />
           </li>
 
           <li class="setting">
             <span class="setting__text">
-              <span class="setting__label">Refresh interval</span>
-              <span class="setting__hint">How often balances are fetched.</span>
+              <span class="setting__label" id="poll-interval-label"></span>
+              <span class="setting__hint" id="poll-interval-hint"></span>
             </span>
-            <select class="select" id="poll-interval" aria-label="Refresh interval">
-              <option value="5">Every 5 min</option>
-              <option value="10">Every 10 min</option>
-              <option value="15">Every 15 min</option>
-            </select>
+            <select class="select" id="poll-interval"></select>
           </li>
         </ul>
 
-        <h2 class="section__title">Providers</h2>
+        <h2 class="section__title" id="settings-providers"></h2>
         <ul class="settings" id="providers" aria-live="polite"></ul>
 
         <p class="hint hint--status" id="settings-status" role="status"></p>

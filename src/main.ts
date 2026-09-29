@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+import { pollIntervals, providerNames, strings } from "./strings";
+
 /** Mirrors `core::types::AppInfo` on the Rust side. */
 interface AppInfo {
   name: string;
@@ -12,14 +14,6 @@ interface AppInfo {
 interface Preferences {
   openWindowOnStart: boolean;
   pollIntervalMinutes: number;
-}
-
-/** Mirrors `ui::ProviderView` on the Rust side. */
-interface ProviderView {
-  id: string;
-  enabled: boolean;
-  keyType: "management" | "standard" | null;
-  hasKey: boolean;
 }
 
 /** Mirrors `core::types::BalanceAmount` on the Rust side. */
@@ -37,20 +31,135 @@ interface BalanceSnapshot {
   fetchedAt: number;
 }
 
+/** Mirrors `core::balances::ProviderStatus` on the Rust side. */
+type ProviderStatus = "idle" | "loading" | "ok" | "error";
+
+/** Mirrors `core::balances::FailureKind` on the Rust side. */
+type FailureKind =
+  "missingKey" | "unauthorized" | "rateLimited" | "network" | "invalid" | "unsupported" | "other";
+
+/** Mirrors `core::balances::ProviderBalance` on the Rust side. */
+interface ProviderBalance {
+  providerId: string;
+  displayName: string;
+  enabled: boolean;
+  status: ProviderStatus;
+  snapshot: BalanceSnapshot | null;
+  error: string | null;
+  errorKind: FailureKind | null;
+  updatedAt: number | null;
+  checkedAt: number | null;
+}
+
+/** Mirrors `core::balances::CurrencyTotal` on the Rust side. */
+interface CurrencyTotal {
+  currency: string;
+  amount: number;
+}
+
+/** Mirrors `core::balances::BalancesReport` on the Rust side. */
+interface BalancesReport {
+  totals: CurrencyTotal[];
+  providers: ProviderBalance[];
+}
+
+/** Mirrors `ui::ProviderView` on the Rust side. */
+interface ProviderView {
+  id: string;
+  enabled: boolean;
+  keyType: "management" | "standard" | null;
+  hasKey: boolean;
+}
+
 type View = "balance" | "settings";
-
-const PROVIDER_LABELS: Record<string, string> = {
-  openrouter: "OpenRouter",
-  deepseek: "DeepSeek",
-};
-
-const KEY_TYPE_LABELS: Record<string, string> = {
-  management: "Management key",
-  standard: "Standard key",
-};
 
 function query<T extends HTMLElement>(selector: string): T | null {
   return document.querySelector<T>(selector);
+}
+
+function displayName(providerId: string, fallback: string): string {
+  return providerNames[providerId] ?? fallback;
+}
+
+/**
+ * Formats an amount the way the tray tooltip does, so the two never disagree:
+ * `$13.13`, not the `US$13.13` a non-US locale would produce.
+ *
+ * The locale is pinned because the interface is English-only for now. When
+ * other languages arrive, this becomes the active language's locale.
+ */
+const AMOUNT_LOCALE = "en";
+
+function formatAmount(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(AMOUNT_LOCALE, { style: "currency", currency }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${currency}`;
+  }
+}
+
+/** "updated just now" / "updated 4 min ago" / "updated 2 h ago". */
+function relativeTime(timestamp: number): string {
+  const elapsed = Math.max(0, Math.floor(Date.now() / 1000) - timestamp);
+
+  if (elapsed < 60) {
+    return strings.balance.updated.justNow;
+  }
+
+  const minutes = Math.floor(elapsed / 60);
+  if (minutes < 60) {
+    return strings.balance.updated.minutes(minutes);
+  }
+
+  return strings.balance.updated.hours(Math.floor(minutes / 60));
+}
+
+/** Fills every static label from `strings`. */
+function applyStrings(): void {
+  document.title = strings.appName;
+
+  const set = (selector: string, text: string) => {
+    const element = query(selector);
+    if (element) {
+      element.textContent = text;
+    }
+  };
+
+  set("#balance-title", strings.appName);
+  set("#refresh", strings.balance.refresh);
+  set("#total-label", strings.balance.total);
+  set("#open-settings", strings.balance.settings);
+
+  set("#settings-title", strings.settings.title);
+  set("#close-settings", strings.settings.back);
+  set("#settings-general", strings.settings.general);
+  set("#settings-providers", strings.settings.providers);
+
+  set("#open-window-on-start-label", strings.settings.openWindowOnLaunch.label);
+  set("#open-window-on-start-hint", strings.settings.openWindowOnLaunch.hint);
+  set("#launch-at-login-label", strings.settings.launchAtLogin.label);
+  set("#launch-at-login-hint", strings.settings.launchAtLogin.hint);
+  set("#poll-interval-label", strings.settings.refreshInterval.label);
+  set("#poll-interval-hint", strings.settings.refreshInterval.hint);
+
+  const labelled = (selector: string, label: string) =>
+    query(selector)?.setAttribute("aria-label", label);
+  labelled("#refresh", strings.balance.refresh);
+  labelled("#open-window-on-start", strings.settings.openWindowOnLaunch.label);
+  labelled("#launch-at-login", strings.settings.launchAtLogin.label);
+  labelled("#poll-interval", strings.settings.refreshInterval.label);
+
+  const interval = query<HTMLSelectElement>("#poll-interval");
+  if (interval) {
+    interval.replaceChildren(
+      ...pollIntervals.map((minutes) => {
+        const option = document.createElement("option");
+        option.value = String(minutes);
+        option.textContent = strings.settings.refreshInterval.option(minutes);
+        return option;
+      }),
+    );
+  }
 }
 
 const views: Record<View, HTMLElement | null> = {
@@ -66,17 +175,178 @@ function navigate(view: View): void {
   }
 }
 
-function label(provider: ProviderView): string {
-  return PROVIDER_LABELS[provider.id] ?? provider.id;
+// ---------------------------------------------------------------------------
+// Balance view
+// ---------------------------------------------------------------------------
+
+/** The last report, kept so the relative times can be refreshed on a timer. */
+let latest: BalancesReport | null = null;
+/** Minutes between refreshes, for the footer. */
+let pollMinutes = 10;
+
+function enabledProviders(report: BalancesReport): ProviderBalance[] {
+  return report.providers.filter((it) => it.enabled);
 }
 
-function formatAmount(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
-  } catch {
-    return `${amount.toFixed(2)} ${currency}`;
+/** A failure the user should act on, as opposed to a key they never added. */
+function isFailure(provider: ProviderBalance): boolean {
+  return provider.errorKind !== null && provider.errorKind !== "missingKey";
+}
+
+function statusBadge(provider: ProviderBalance): { label: string; state: string } {
+  if (!provider.enabled) {
+    return { label: strings.provider.status.disabled, state: "muted" };
+  }
+
+  switch (provider.status) {
+    case "ok":
+      return { label: strings.provider.status.ok, state: "ok" };
+    case "loading":
+      return { label: strings.provider.status.loading, state: "busy" };
+    case "error":
+      return provider.errorKind === "missingKey"
+        ? { label: strings.provider.status.missingKey, state: "muted" }
+        : { label: strings.provider.status.error, state: "error" };
+    default:
+      return { label: strings.provider.status.idle, state: "muted" };
   }
 }
+
+function metaText(report: BalancesReport): string {
+  const enabled = enabledProviders(report);
+
+  if (enabled.length === 0) {
+    return strings.balance.noProviders;
+  }
+
+  if (report.totals.length === 0) {
+    return strings.balance.noBalances;
+  }
+
+  if (enabled.some((it) => it.status === "loading")) {
+    return strings.balance.refreshing;
+  }
+
+  const parts = [strings.balance.providers(enabled.length)];
+
+  const failures = enabled.filter(isFailure).length;
+  if (failures > 0) {
+    parts.push(strings.balance.errors(failures));
+  }
+
+  const updatedAt = Math.max(...enabled.map((it) => it.updatedAt ?? 0));
+  parts.push(updatedAt > 0 ? relativeTime(updatedAt) : strings.balance.updated.never);
+
+  return parts.join(" · ");
+}
+
+function overlay(...parts: HTMLElement[]): HTMLElement {
+  const wrapper = document.createElement("span");
+  wrapper.className = "stack";
+  wrapper.append(...parts);
+  return wrapper;
+}
+
+function balanceRow(provider: ProviderBalance): HTMLLIElement {
+  const badge = statusBadge(provider);
+
+  const row = document.createElement("li");
+  row.className = "balance";
+  row.dataset.state = provider.enabled ? provider.status : "disabled";
+
+  const avatar = document.createElement("span");
+  avatar.className = "balance__avatar";
+  avatar.textContent = displayName(provider.providerId, provider.displayName).charAt(0);
+
+  const text = document.createElement("span");
+  text.className = "balance__text";
+
+  const name = document.createElement("span");
+  name.className = "balance__name";
+  name.textContent = displayName(provider.providerId, provider.displayName);
+
+  const detail = document.createElement("span");
+  detail.className = "balance__detail";
+  // A failure is the most useful thing to show; otherwise the label says what
+  // the number is.
+  detail.textContent = provider.error ?? provider.snapshot?.amounts[0]?.label ?? "";
+
+  text.append(name, detail);
+
+  const right = document.createElement("span");
+  right.className = "balance__right";
+
+  const amounts = document.createElement("span");
+  amounts.className = "balance__amounts";
+
+  if (provider.snapshot) {
+    for (const entry of provider.snapshot.amounts) {
+      const value = document.createElement("span");
+      value.className = "balance__amount";
+      value.textContent = formatAmount(entry.amount, entry.currency);
+      amounts.append(value);
+    }
+  } else if (provider.status === "loading" && provider.enabled) {
+    const skeleton = document.createElement("span");
+    skeleton.className = "skeleton";
+    amounts.append(skeleton);
+  } else {
+    const empty = document.createElement("span");
+    empty.className = "balance__amount balance__amount--empty";
+    empty.textContent = strings.balance.noValue;
+    amounts.append(empty);
+  }
+
+  const tag = document.createElement("span");
+  tag.className = "badge";
+  tag.dataset.state = badge.state;
+  tag.textContent = badge.label;
+
+  right.append(overlay(amounts), tag);
+
+  row.append(avatar, text, right);
+
+  return row;
+}
+
+function renderBalances(report: BalancesReport): void {
+  latest = report;
+
+  const totals = query<HTMLDivElement>("#totals");
+  if (totals) {
+    totals.replaceChildren(
+      ...report.totals.map((total) => {
+        const value = document.createElement("span");
+        value.className = "hero__total";
+        value.textContent = formatAmount(total.amount, total.currency);
+        return value;
+      }),
+    );
+  }
+
+  const meta = query<HTMLSpanElement>("#balance-meta");
+  if (meta) {
+    meta.textContent = metaText(report);
+  }
+
+  const list = query<HTMLUListElement>("#balance-providers");
+  if (list) {
+    list.replaceChildren(...report.providers.map(balanceRow));
+  }
+
+  renderFooter();
+}
+
+function renderFooter(): void {
+  const footer = query<HTMLSpanElement>("#balance-footer");
+  if (footer) {
+    footer.textContent = strings.balance.autoRefresh(pollMinutes);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Settings view
+// ---------------------------------------------------------------------------
 
 /**
  * Wires a checkbox to a Rust getter/setter pair, reverting the toggle when the
@@ -96,7 +366,7 @@ function bindSwitch(
     .then((value) => {
       input.checked = value;
     })
-    .catch(() => setStatus("Could not read the current setting."));
+    .catch(() => setStatus(strings.status.readSettingFailed));
 
   input.addEventListener("change", async () => {
     input.disabled = true;
@@ -118,6 +388,8 @@ function providerRow(
   refresh: () => Promise<void>,
   setStatus: (message: string) => void,
 ): HTMLLIElement {
+  const name = displayName(provider.id, provider.id);
+
   const row = document.createElement("li");
   row.className = "provider";
 
@@ -127,23 +399,28 @@ function providerRow(
   const text = document.createElement("span");
   text.className = "provider__text";
 
-  const name = document.createElement("span");
-  name.className = "provider__name";
-  name.textContent = label(provider);
+  const title = document.createElement("span");
+  title.className = "provider__name";
+  title.textContent = name;
 
   const meta = document.createElement("span");
   meta.className = "provider__meta";
-  const keyKind = provider.keyType ? (KEY_TYPE_LABELS[provider.keyType] ?? provider.keyType) : null;
-  const keyState = provider.hasKey ? "key configured" : "no key stored";
+  const keyKind =
+    provider.keyType === "management"
+      ? strings.provider.managementKey
+      : provider.keyType === "standard"
+        ? strings.provider.standardKey
+        : null;
+  const keyState = provider.hasKey ? strings.provider.keyConfigured : strings.provider.noKeyStored;
   meta.textContent = keyKind ? `${keyKind} · ${keyState}` : keyState;
 
-  text.append(name, meta);
+  text.append(title, meta);
 
   const enabled = document.createElement("input");
   enabled.type = "checkbox";
   enabled.className = "switch";
   enabled.checked = provider.enabled;
-  enabled.setAttribute("aria-label", `Enable ${label(provider)}`);
+  enabled.setAttribute("aria-label", name);
   enabled.addEventListener("change", async () => {
     enabled.disabled = true;
     try {
@@ -167,17 +444,19 @@ function providerRow(
   input.className = "key-input";
   input.autocomplete = "off";
   input.spellcheck = false;
-  input.placeholder = provider.hasKey ? "Key stored — type to replace" : "Paste the API key";
-  input.setAttribute("aria-label", `${label(provider)} API key`);
+  input.placeholder = provider.hasKey
+    ? strings.provider.keyPlaceholder.stored
+    : strings.provider.keyPlaceholder.empty;
+  input.setAttribute("aria-label", `${name} ${strings.provider.keyPlaceholder.empty}`);
 
   const save = document.createElement("button");
   save.type = "button";
   save.className = "link";
-  save.textContent = "Save";
+  save.textContent = strings.provider.save;
   save.addEventListener("click", async () => {
     const key = input.value.trim();
     if (!key) {
-      setStatus("Enter a key before saving.");
+      setStatus(strings.status.keyRequired);
       return;
     }
 
@@ -197,7 +476,7 @@ function providerRow(
   const remove = document.createElement("button");
   remove.type = "button";
   remove.className = "link";
-  remove.textContent = "Remove";
+  remove.textContent = strings.provider.remove;
   remove.disabled = !provider.hasKey;
   remove.addEventListener("click", async () => {
     remove.disabled = true;
@@ -223,11 +502,11 @@ function providerRow(
   const test = document.createElement("button");
   test.type = "button";
   test.className = "link";
-  test.textContent = "Test";
+  test.textContent = strings.provider.test;
   test.addEventListener("click", async () => {
     test.disabled = true;
     delete result.dataset.state;
-    result.textContent = "Checking…";
+    result.textContent = strings.provider.checking;
     try {
       const snapshot = await invoke<BalanceSnapshot>("fetch_provider_balance", {
         providerId: provider.id,
@@ -250,9 +529,18 @@ function providerRow(
   return row;
 }
 
+// ---------------------------------------------------------------------------
+// Bootstrap
+// ---------------------------------------------------------------------------
+
 window.addEventListener("DOMContentLoaded", async () => {
-  document.querySelectorAll<HTMLElement>("[data-navigate]").forEach((element) => {
-    element.addEventListener("click", () => navigate(element.dataset.navigate as View));
+  applyStrings();
+
+  query("#open-settings")?.addEventListener("click", () => navigate("settings"));
+  query("#close-settings")?.addEventListener("click", () => navigate("balance"));
+
+  query("#refresh")?.addEventListener("click", () => {
+    void invoke("refresh_balances");
   });
 
   const status = query<HTMLParagraphElement>("#settings-status");
@@ -283,24 +571,30 @@ window.addEventListener("DOMContentLoaded", async () => {
   try {
     const info = await invoke<AppInfo>("app_info");
     const summary = `${info.name} v${info.version}`;
-
-    const balanceInfo = query<HTMLParagraphElement>("#app-info");
-    if (balanceInfo) {
-      balanceInfo.textContent = summary;
-      balanceInfo.title = info.identifier;
-    }
-
     const settingsInfo = query<HTMLSpanElement>("#settings-app-info");
     if (settingsInfo) {
       settingsInfo.textContent = `${summary} · ${info.identifier}`;
     }
   } catch (error) {
-    const balanceInfo = query<HTMLParagraphElement>("#app-info");
-    if (balanceInfo) {
-      balanceInfo.textContent = "The backend did not respond.";
-    }
+    setStatus(strings.status.backendUnreachable);
     console.error(error);
   }
+
+  // The balances arrive from the poller; the window only ever renders them.
+  await listen<BalancesReport>("balances", (event) => renderBalances(event.payload));
+
+  try {
+    renderBalances(await invoke<BalancesReport>("get_balances"));
+  } catch (error) {
+    setStatus(String(error));
+  }
+
+  // Relative times would otherwise freeze at whatever they said on first paint.
+  window.setInterval(() => {
+    if (latest) {
+      renderBalances(latest);
+    }
+  }, 30_000);
 
   bindSwitch(
     query<HTMLInputElement>("#open-window-on-start"),
@@ -320,18 +614,21 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (interval) {
     invoke<Preferences>("get_preferences")
       .then((preferences) => {
-        interval.value = String(preferences.pollIntervalMinutes);
+        pollMinutes = preferences.pollIntervalMinutes;
+        interval.value = String(pollMinutes);
+        renderFooter();
       })
-      .catch(() => setStatus("Could not read the refresh interval."));
+      .catch(() => setStatus(strings.status.readIntervalFailed));
 
     interval.addEventListener("change", async () => {
       interval.disabled = true;
       try {
         // The backend clamps, so it decides what the setting actually became.
-        const stored = await invoke<number>("set_poll_interval", {
+        pollMinutes = await invoke<number>("set_poll_interval", {
           minutes: Number(interval.value),
         });
-        interval.value = String(stored);
+        interval.value = String(pollMinutes);
+        renderFooter();
         setStatus("");
       } catch (error) {
         setStatus(String(error));

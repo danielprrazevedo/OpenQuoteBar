@@ -302,6 +302,166 @@ body {
   text-decoration: none;
 }
 
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0 10px;
+}
+
+.hero__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #98a2b3;
+}
+
+.hero__totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hero__total {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.hero__meta {
+  font-size: 11.5px;
+  color: #667085;
+}
+
+.balances {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.balance {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 0;
+  border-top: 1px solid #e7ebf1;
+}
+
+.balance:first-child {
+  border-top: 0;
+}
+
+.balance[data-state="disabled"] {
+  opacity: 0.55;
+}
+
+.balance__avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background-color: #eef2f6;
+  color: #475467;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.balance__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.balance__name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.balance__detail {
+  font-size: 11.5px;
+  color: #667085;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balance[data-state="error"] .balance__detail {
+  color: #c0392b;
+}
+
+.balance__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  flex: none;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.balance__amounts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.balance__amount {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.balance__amount--empty {
+  color: #98a2b3;
+  font-weight: 500;
+}
+
+/* A provider that failed keeps showing its last known value, dimmed. */
+.balance[data-state="error"] .balance__amount {
+  opacity: 0.5;
+}
+
+.skeleton {
+  display: block;
+  width: 54px;
+  height: 13px;
+  border-radius: 4px;
+  background-color: #e9edf3;
+}
+
+.badge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  background-color: #eef2f6;
+  color: #475467;
+}
+
+.badge[data-state="ok"] {
+  background-color: #e3f5ea;
+  color: #16794b;
+}
+
+.badge[data-state="error"] {
+  background-color: #fce9e7;
+  color: #c0392b;
+}
+
+.badge[data-state="busy"] {
+  background-color: #eaf0fe;
+  color: #2563eb;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f2f4f7;
@@ -353,5 +513,51 @@ body {
 
   .provider__result[data-state="error"] {
     color: #f87171;
+  }
+
+  .balance {
+    border-top-color: #1d2939;
+  }
+
+  .balance__avatar {
+    background-color: #1d2939;
+    color: #98a2b3;
+  }
+
+  .balance__detail,
+  .hero__meta {
+    color: #98a2b3;
+  }
+
+  .balance[data-state="error"] .balance__detail {
+    color: #f87171;
+  }
+
+  .balance__amount--empty {
+    color: #667085;
+  }
+
+  .skeleton {
+    background-color: #1d2939;
+  }
+
+  .badge {
+    background-color: #1d2939;
+    color: #98a2b3;
+  }
+
+  .badge[data-state="ok"] {
+    background-color: #12352a;
+    color: #4ade80;
+  }
+
+  .badge[data-state="error"] {
+    background-color: #3a1d1a;
+    color: #f87171;
+  }
+
+  .badge[data-state="busy"] {
+    background-color: #1b2a4a;
+    color: #7aa2ff;
   }
 }
