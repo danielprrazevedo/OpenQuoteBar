@@ -14,7 +14,7 @@ use tokio::time::{interval, sleep};
 
 use crate::adapters::{self, AdapterError};
 use crate::core::{
-    balances::{ProviderBalance, ProviderStatus},
+    balances::{BalancesReport, FailureKind, ProviderBalance, ProviderStatus},
     config::{self, ProviderConfig},
     preferences,
     secrets::KeyringStore,
@@ -48,12 +48,13 @@ pub fn request_refresh<R: Runtime>(app: &AppHandle<R>) {
     app.state::<AppState>().refresh.notify_one();
 }
 
-/// Everything we know right now, ordered like the configuration.
-pub fn snapshot<R: Runtime>(app: &AppHandle<R>) -> Vec<ProviderBalance> {
+/// Everything we know right now: the totals, and the rows behind them.
+pub fn report<R: Runtime>(app: &AppHandle<R>) -> BalancesReport {
     let state = app.state::<AppState>();
     let balances = state.balances.read().expect("balance cache lock poisoned");
 
-    match config::load(app) {
+    // Ordered like the configuration, so the UI never reshuffles.
+    let providers = match config::load(app) {
         Ok(config) => config
             .providers
             .iter()
@@ -64,6 +65,21 @@ pub fn snapshot<R: Runtime>(app: &AppHandle<R>) -> Vec<ProviderBalance> {
             everything.sort_by(|left, right| left.provider_id.cmp(&right.provider_id));
             everything
         }
+    };
+
+    BalancesReport::new(providers)
+}
+
+/// Translates an adapter failure into the kind the UI acts on.
+pub fn failure_kind(error: &AdapterError) -> FailureKind {
+    match error {
+        AdapterError::MissingCredentials(_) => FailureKind::MissingKey,
+        AdapterError::Unauthorized(_) => FailureKind::Unauthorized,
+        AdapterError::RateLimited { .. } => FailureKind::RateLimited,
+        AdapterError::Timeout | AdapterError::Network(_) => FailureKind::Network,
+        AdapterError::Malformed(_) | AdapterError::NotApplicable(_) => FailureKind::Invalid,
+        AdapterError::UnknownProvider(_) => FailureKind::Unsupported,
+        AdapterError::Credentials(_) | AdapterError::UnexpectedStatus { .. } => FailureKind::Other,
     }
 }
 
@@ -218,14 +234,14 @@ fn apply_results<R: Runtime>(
 
         match result {
             Ok(snapshot) => entry.apply_success(snapshot),
-            Err(error) => entry.apply_failure(error.to_string()),
+            Err(error) => entry.apply_failure(failure_kind(&error), error.to_string()),
         }
     }
 }
 
 /// Tells the frontend that the cache changed.
 fn publish<R: Runtime>(app: &AppHandle<R>) {
-    let _ = app.emit(BALANCES_EVENT, snapshot(app));
+    let _ = app.emit(BALANCES_EVENT, report(app));
 }
 
 #[cfg(test)]
@@ -273,5 +289,54 @@ mod tests {
         assert!(!is_retryable(&AdapterError::RateLimited {
             retry_after: Some(Duration::from_secs(30)),
         }));
+    }
+
+    #[test]
+    fn every_adapter_failure_maps_to_a_kind() {
+        use AdapterError::{
+            Credentials, Malformed, MissingCredentials, Network, NotApplicable, RateLimited,
+            Timeout, Unauthorized, UnexpectedStatus, UnknownProvider,
+        };
+
+        assert_eq!(
+            failure_kind(&MissingCredentials("openrouter".to_string())),
+            FailureKind::MissingKey
+        );
+        assert_eq!(
+            failure_kind(&Unauthorized("nope".to_string())),
+            FailureKind::Unauthorized
+        );
+        assert_eq!(
+            failure_kind(&RateLimited { retry_after: None }),
+            FailureKind::RateLimited
+        );
+        assert_eq!(failure_kind(&Timeout), FailureKind::Network);
+        assert_eq!(
+            failure_kind(&Network("dns".to_string())),
+            FailureKind::Network
+        );
+        assert_eq!(
+            failure_kind(&Malformed("bad".to_string())),
+            FailureKind::Invalid
+        );
+        assert_eq!(
+            failure_kind(&NotApplicable("n/a".to_string())),
+            FailureKind::Invalid
+        );
+        assert_eq!(
+            failure_kind(&UnknownProvider("acme".to_string())),
+            FailureKind::Unsupported
+        );
+        assert_eq!(
+            failure_kind(&Credentials("keychain".to_string())),
+            FailureKind::Other
+        );
+        assert_eq!(
+            failure_kind(&UnexpectedStatus {
+                status: 418,
+                message: String::new()
+            }),
+            FailureKind::Other
+        );
     }
 }

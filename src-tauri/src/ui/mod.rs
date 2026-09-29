@@ -12,7 +12,7 @@ use crate::{
     adapters,
     core::{
         autostart,
-        balances::ProviderBalance,
+        balances::BalancesReport,
         config::{self, KeyType},
         preferences,
         secrets::{KeyringStore, SecretStore},
@@ -155,10 +155,10 @@ pub async fn fetch_provider_balance(
         .map_err(|error| error.to_string())
 }
 
-/// Returns the last known balance of every configured provider.
+/// Returns the last known balances: the per-currency totals and the rows.
 #[tauri::command]
-pub fn get_balances(app: AppHandle) -> Vec<ProviderBalance> {
-    poller::snapshot(&app)
+pub fn get_balances(app: AppHandle) -> BalancesReport {
+    poller::report(&app)
 }
 
 /// Asks the poller to run a refresh cycle right away.

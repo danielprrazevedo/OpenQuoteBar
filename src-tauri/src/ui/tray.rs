@@ -7,7 +7,7 @@ use tauri::{
 };
 
 use crate::core::{
-    balances::{ProviderBalance, ProviderStatus},
+    balances::{BalancesReport, CurrencyTotal, FailureKind, ProviderBalance, ProviderStatus},
     time::unix_now,
 };
 
@@ -58,12 +58,12 @@ pub fn build(app: &App) -> tauri::Result<()> {
     // the status indicator while the window is closed.
     let handle = app.handle().clone();
     app.listen(crate::poller::BALANCES_EVENT, move |event| {
-        let Ok(balances) = serde_json::from_str::<Vec<ProviderBalance>>(event.payload()) else {
+        let Ok(report) = serde_json::from_str::<BalancesReport>(event.payload()) else {
             return;
         };
 
         if let Some(tray) = handle.tray_by_id(TRAY_ID) {
-            let _ = tray.set_tooltip(Some(&summarize(&balances)));
+            let _ = tray.set_tooltip(Some(&summarize(&report)));
         }
     });
 
@@ -71,8 +71,8 @@ pub fn build(app: &App) -> tauri::Result<()> {
 }
 
 /// One line describing the cache, for the tray tooltip.
-pub fn summarize(balances: &[ProviderBalance]) -> String {
-    let enabled: Vec<&ProviderBalance> = balances.iter().filter(|it| it.enabled).collect();
+pub fn summarize(report: &BalancesReport) -> String {
+    let enabled: Vec<&ProviderBalance> = report.providers.iter().filter(|it| it.enabled).collect();
 
     if enabled.is_empty() {
         return format!("{APP_NAME} · no providers enabled");
@@ -85,21 +85,23 @@ pub fn summarize(balances: &[ProviderBalance]) -> String {
         return format!("{APP_NAME} · updating…");
     }
 
-    let count = enabled.len();
-    let failed = enabled
+    if report.totals.is_empty() {
+        // Nothing has ever answered. Say that plainly rather than shouting
+        // about keys that were never configured.
+        return format!("{APP_NAME} · no balances yet");
+    }
+
+    let mut summary = format!("{APP_NAME} · {}", format_totals(&report.totals));
+
+    let failures = enabled
         .iter()
-        .filter(|it| it.status == ProviderStatus::Error)
+        .filter(|it| it.error_kind.is_some_and(FailureKind::is_failure))
         .count();
 
-    let mut summary = format!(
-        "{APP_NAME} · {count} provider{}",
-        if count == 1 { "" } else { "s" }
-    );
-
-    if failed > 0 {
+    if failures > 0 {
         summary.push_str(&format!(
-            " · {failed} error{}",
-            if failed == 1 { "" } else { "s" }
+            " · {failures} error{}",
+            if failures == 1 { "" } else { "s" }
         ));
     }
 
@@ -109,6 +111,33 @@ pub fn summarize(balances: &[ProviderBalance]) -> String {
     }
 
     summary
+}
+
+/// Renders every currency total, e.g. `$142.18` or `$10.00 · CN¥72.00`.
+fn format_totals(totals: &[CurrencyTotal]) -> String {
+    totals
+        .iter()
+        .map(|total| format_amount(total.amount, &total.currency))
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+/// Formats an amount with its currency symbol, falling back to the code.
+///
+/// The window uses `Intl.NumberFormat`; this is the Rust counterpart, so the
+/// tooltip does not depend on the webview being awake (WebKit throttles timers
+/// in hidden windows, and the tooltip has to keep working there).
+fn format_amount(amount: f64, currency: &str) -> String {
+    let symbol = match currency {
+        "USD" => "$".to_string(),
+        "EUR" => "€".to_string(),
+        "GBP" => "£".to_string(),
+        "CNY" => "CN¥".to_string(),
+        "JPY" => "¥".to_string(),
+        other => format!("{other} "),
+    };
+
+    format!("{symbol}{amount:.2}")
 }
 
 /// Turns a timestamp into "just now" / "4 min ago" / "2 h ago".
@@ -146,6 +175,11 @@ pub fn show_main_window<R: Runtime>(app: &AppHandle<R>, view: Option<&str>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::{
+        balances::totals,
+        time::unix_now,
+        types::{BalanceAmount, BalanceSnapshot},
+    };
 
     fn provider(id: &str, enabled: bool, status: ProviderStatus) -> ProviderBalance {
         let mut entry = ProviderBalance::new(id, id, enabled);
@@ -153,60 +187,143 @@ mod tests {
         entry
     }
 
+    /// A provider that answered with a single amount in `currency`.
+    fn provider_with_value(id: &str, amount: f64, currency: &str) -> ProviderBalance {
+        let mut entry = ProviderBalance::new(id, id, true);
+        entry.apply_success(BalanceSnapshot {
+            provider_id: id.to_string(),
+            display_name: id.to_string(),
+            amounts: vec![BalanceAmount {
+                amount,
+                currency: currency.to_string(),
+                label: format!("{currency} balance"),
+            }],
+            fetched_at: unix_now(),
+        });
+        entry
+    }
+
+    fn report(providers: Vec<ProviderBalance>) -> BalancesReport {
+        BalancesReport {
+            totals: totals(&providers),
+            providers,
+        }
+    }
+
     #[test]
     fn nothing_enabled_says_so() {
-        assert_eq!(summarize(&[]), "OpenQuoteBar · no providers enabled");
         assert_eq!(
-            summarize(&[provider("openrouter", false, ProviderStatus::Idle)]),
+            summarize(&report(vec![])),
+            "OpenQuoteBar · no providers enabled"
+        );
+        assert_eq!(
+            summarize(&report(vec![provider(
+                "openrouter",
+                false,
+                ProviderStatus::Idle
+            )])),
             "OpenQuoteBar · no providers enabled"
         );
     }
 
     #[test]
     fn a_cycle_in_flight_says_it_is_updating() {
-        let balances = [
+        let balances = report(vec![
             provider("openrouter", true, ProviderStatus::Ok),
             provider("deepseek", true, ProviderStatus::Loading),
-        ];
+        ]);
 
         assert_eq!(summarize(&balances), "OpenQuoteBar · updating…");
     }
 
     #[test]
-    fn a_successful_cycle_counts_providers_and_says_when() {
-        let mut openrouter = provider("openrouter", true, ProviderStatus::Ok);
-        openrouter.updated_at = Some(unix_now());
+    fn a_fresh_install_without_any_value_says_so_plainly() {
+        let mut unconfigured = provider("openrouter", true, ProviderStatus::Error);
+        unconfigured.apply_failure(FailureKind::MissingKey, "no API key is stored");
 
-        let summary = summarize(&[openrouter]);
+        let summary = summarize(&report(vec![unconfigured]));
+
+        assert_eq!(summary, "OpenQuoteBar · no balances yet");
+    }
+
+    #[test]
+    fn the_total_is_reported_with_its_currency() {
+        let summary = summarize(&report(vec![provider_with_value(
+            "openrouter",
+            142.18,
+            "USD",
+        )]));
 
         assert!(
-            summary.starts_with("OpenQuoteBar · 1 provider · "),
+            summary.starts_with("OpenQuoteBar · $142.18 · "),
             "{summary}"
         );
         assert!(summary.ends_with("updated just now"), "{summary}");
     }
 
     #[test]
-    fn failures_are_counted_and_the_last_success_is_still_reported() {
-        let mut openrouter = provider("openrouter", true, ProviderStatus::Ok);
-        openrouter.updated_at = Some(unix_now());
+    fn every_currency_gets_its_own_total() {
+        let deepseek = {
+            let mut entry = ProviderBalance::new("deepseek", "deepseek", true);
+            entry.apply_success(BalanceSnapshot {
+                provider_id: "deepseek".to_string(),
+                display_name: "deepseek".to_string(),
+                amounts: vec![
+                    BalanceAmount {
+                        amount: 10.0,
+                        currency: "USD".to_string(),
+                        label: "USD balance".to_string(),
+                    },
+                    BalanceAmount {
+                        amount: 72.0,
+                        currency: "CNY".to_string(),
+                        label: "CNY balance".to_string(),
+                    },
+                ],
+                fetched_at: unix_now(),
+            });
+            entry
+        };
 
-        let summary = summarize(&[
-            openrouter,
-            provider("deepseek", true, ProviderStatus::Error),
-        ]);
+        let summary = summarize(&report(vec![deepseek]));
 
-        assert!(summary.contains("2 providers"), "{summary}");
-        assert!(summary.contains("1 error"), "{summary}");
-        assert!(summary.contains("updated just now"), "{summary}");
+        // CNY sorts before USD.
+        assert!(summary.contains("CN¥72.00 · $10.00"), "{summary}");
     }
 
     #[test]
-    fn a_failure_before_any_success_says_it_has_not_updated_yet() {
-        let summary = summarize(&[provider("deepseek", true, ProviderStatus::Error)]);
+    fn a_failure_is_counted_and_the_last_success_is_still_reported() {
+        let mut failing = provider_with_value("deepseek", 5.0, "USD");
+        failing.apply_failure(FailureKind::Network, "the request timed out");
 
+        let summary = summarize(&report(vec![
+            provider_with_value("openrouter", 10.0, "USD"),
+            failing,
+        ]));
+
+        assert!(summary.contains("$15.00"), "{summary}");
         assert!(summary.contains("1 error"), "{summary}");
-        assert!(summary.ends_with("not updated yet"), "{summary}");
+        assert!(summary.ends_with("updated just now"), "{summary}");
+    }
+
+    #[test]
+    fn a_missing_key_is_not_counted_as_an_error() {
+        let mut unconfigured = provider("deepseek", true, ProviderStatus::Error);
+        unconfigured.apply_failure(FailureKind::MissingKey, "no API key is stored");
+        // Give it a value so the summary does not collapse to "no balances yet".
+        let mut configured = provider_with_value("openrouter", 10.0, "USD");
+
+        let summary = summarize(&report(vec![configured, unconfigured.clone()]));
+
+        assert!(!summary.contains("error"), "{summary}");
+
+        // Now the same provider fails for a real reason.
+        configured = provider_with_value("openrouter", 10.0, "USD");
+        let mut broken = provider("deepseek", true, ProviderStatus::Error);
+        broken.apply_failure(FailureKind::Unauthorized, "the key was rejected");
+
+        let summary = summarize(&report(vec![configured, broken]));
+        assert!(summary.contains("1 error"), "{summary}");
     }
 
     #[test]
@@ -216,5 +333,12 @@ mod tests {
         assert_eq!(relative(now), "updated just now");
         assert_eq!(relative(now - 240), "updated 4 min ago");
         assert_eq!(relative(now - 7200), "updated 2 h ago");
+    }
+
+    #[test]
+    fn amounts_are_formatted_with_a_symbol_and_two_decimals() {
+        assert_eq!(format_amount(142.1, "USD"), "$142.10");
+        assert_eq!(format_amount(72.456, "CNY"), "CN¥72.46");
+        assert_eq!(format_amount(3.0, "CHF"), "CHF 3.00");
     }
 }
