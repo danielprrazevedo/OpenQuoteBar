@@ -79,6 +79,11 @@ Editing `config.toml` by hand is supported. Note that toggling a provider from t
 file from its parsed values: the documented header is preserved, but comments added inside the
 provider entries are not.
 
+Each provider row in Settings also has a **Test** button, which fetches the current balance using the
+stored key and reports either the amount or the reason it failed. The provider adapters live in
+`src-tauri/src/adapters/`; each one is behind the same `ProviderAdapter` trait and returns a
+normalized `BalanceSnapshot`, so the UI never has to know how a provider expresses "balance".
+
 ## Project layout
 
 ```

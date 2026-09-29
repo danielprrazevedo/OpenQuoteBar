@@ -254,6 +254,27 @@ body {
   border-color: transparent;
 }
 
+.provider__actions {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.provider__result {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: #667085;
+}
+
+.provider__result[data-state="ok"] {
+  color: #16794b;
+}
+
+.provider__result[data-state="error"] {
+  color: #c0392b;
+}
+
 .link:disabled {
   opacity: 0.45;
   cursor: default;
@@ -294,5 +315,17 @@ body {
 
   .provider__meta {
     color: #98a2b3;
+  }
+
+  .provider__result {
+    color: #98a2b3;
+  }
+
+  .provider__result[data-state="ok"] {
+    color: #4ade80;
+  }
+
+  .provider__result[data-state="error"] {
+    color: #f87171;
   }
 }

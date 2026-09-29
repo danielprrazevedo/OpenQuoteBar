@@ -21,6 +21,16 @@ interface ProviderView {
   hasKey: boolean;
 }
 
+/** Mirrors `core::types::BalanceSnapshot` on the Rust side. */
+interface BalanceSnapshot {
+  providerId: string;
+  displayName: string;
+  amount: number;
+  currency: string;
+  label: string;
+  fetchedAt: number;
+}
+
 type View = "balance" | "settings";
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -52,6 +62,14 @@ function navigate(view: View): void {
 
 function label(provider: ProviderView): string {
   return PROVIDER_LABELS[provider.id] ?? provider.id;
+}
+
+function formatAmount(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${currency}`;
+  }
 }
 
 /**
@@ -189,7 +207,37 @@ function providerRow(
   });
 
   keyRow.append(input, save, remove);
-  row.append(head, keyRow);
+
+  const testRow = document.createElement("div");
+  testRow.className = "provider__actions";
+
+  const result = document.createElement("span");
+  result.className = "provider__result";
+
+  const test = document.createElement("button");
+  test.type = "button";
+  test.className = "link";
+  test.textContent = "Test";
+  test.addEventListener("click", async () => {
+    test.disabled = true;
+    delete result.dataset.state;
+    result.textContent = "Checking…";
+    try {
+      const snapshot = await invoke<BalanceSnapshot>("fetch_provider_balance", {
+        providerId: provider.id,
+      });
+      result.textContent = `${formatAmount(snapshot.amount, snapshot.currency)} available · ${snapshot.label}`;
+      result.dataset.state = "ok";
+    } catch (error) {
+      result.textContent = String(error);
+      result.dataset.state = "error";
+    } finally {
+      test.disabled = false;
+    }
+  });
+
+  testRow.append(test, result);
+  row.append(head, keyRow, testRow);
 
   return row;
 }
