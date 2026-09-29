@@ -8,10 +8,13 @@ use async_trait::async_trait;
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 
-use crate::core::types::{BalanceAmount, BalanceSnapshot};
+use crate::core::{
+    time::unix_now,
+    types::{BalanceAmount, BalanceSnapshot},
+};
 
 use super::{
-    http::{error_message, map_transport, parse_retry_after, unix_now},
+    http::{error_message, map_transport, parse_retry_after},
     AdapterError, Credentials, ProviderAdapter,
 };
 

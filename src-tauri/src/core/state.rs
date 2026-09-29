@@ -1,11 +1,13 @@
-//! Application state shared across Tauri commands.
-//!
-//! The polling scheduler and the balance cache land with issue #6; for now the
-//! state owns the shared HTTP client so adapters do not each build their own.
+//! Application state shared across Tauri commands and the poller.
 
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use reqwest::Client;
+use tokio::sync::Notify;
+
+use crate::core::balances::ProviderBalance;
 
 /// Time budget for a whole provider request.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -19,6 +21,13 @@ pub struct AppState {
     /// Shared HTTP client: connection pooling, timeouts and user agent are
     /// configured once and reused by every adapter.
     pub http: Client,
+    /// Last known state of every configured provider.
+    ///
+    /// A plain `RwLock` is enough because it is only ever held for the time it
+    /// takes to read or write a map entry, never across an await.
+    pub balances: RwLock<HashMap<String, ProviderBalance>>,
+    /// Signalled to ask the poller for an immediate cycle.
+    pub refresh: Arc<Notify>,
 }
 
 impl AppState {
@@ -36,7 +45,11 @@ impl AppState {
             .build()
             .expect("could not build the HTTP client");
 
-        Self { http }
+        Self {
+            http,
+            balances: RwLock::new(HashMap::new()),
+            refresh: Arc::new(Notify::new()),
+        }
     }
 }
 

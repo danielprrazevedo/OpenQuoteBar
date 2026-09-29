@@ -15,11 +15,12 @@ use serde::{de::DeserializeOwned, Deserialize};
 
 use crate::core::{
     config::KeyType,
+    time::unix_now,
     types::{BalanceAmount, BalanceSnapshot},
 };
 
 use super::{
-    http::{error_message, map_transport, parse_retry_after, unix_now},
+    http::{error_message, map_transport, parse_retry_after},
     AdapterError, Credentials, ProviderAdapter,
 };
 

@@ -13,7 +13,7 @@ use std::time::Duration;
 use reqwest::Client;
 
 use crate::core::{
-    config::{Config, KeyType},
+    config::{Config, KeyType, ProviderConfig},
     secrets::SecretStore,
     types::BalanceSnapshot,
 };
@@ -110,7 +110,7 @@ pub fn adapter_for(provider_id: &str, http: &Client) -> Option<Box<dyn ProviderA
 /// Resolves everything needed to fetch one provider's balance: the adapter that
 /// knows the provider, and the credentials read from the credential store.
 ///
-/// Both the manual fetch and, later, the polling loop go through here.
+/// Both the manual fetch and the polling loop go through here.
 pub fn resolve(
     config: &Config,
     secrets: &dyn SecretStore,
@@ -123,6 +123,15 @@ pub fn resolve(
         .find(|it| it.id == provider_id)
         .ok_or_else(|| AdapterError::UnknownProvider(provider_id.to_string()))?;
 
+    resolve_provider(provider, secrets, http)
+}
+
+/// Same as [`resolve`], for callers that already hold the provider entry.
+pub fn resolve_provider(
+    provider: &ProviderConfig,
+    secrets: &dyn SecretStore,
+    http: &Client,
+) -> Result<(Box<dyn ProviderAdapter>, Credentials), AdapterError> {
     let adapter = adapter_for(&provider.id, http)
         .ok_or_else(|| AdapterError::UnknownProvider(provider.id.clone()))?;
 

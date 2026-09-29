@@ -1,14 +1,16 @@
 //! OpenQuoteBar — a lightweight menu bar / system tray app that shows the
 //! available balance of your LLM API providers.
 //!
-//! The backend is split into three layers:
+//! The backend is split into four layers:
 //!
-//! - [`core`] — provider-agnostic domain types, state and preferences.
+//! - [`core`] — provider-agnostic domain types, state, cache and preferences.
 //! - [`adapters`] — one adapter per provider, behind a single interface.
+//! - [`poller`] — the loop that refreshes providers and fills the cache.
 //! - [`ui`] — the tray icon and the Tauri commands the webview calls.
 
 pub mod adapters;
 pub mod core;
+pub mod poller;
 pub mod ui;
 
 use core::{preferences, AppState};
@@ -51,6 +53,9 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             ui::tray::build(app)?;
+
+            // Keep the balance cache warm for as long as the app runs.
+            poller::spawn(app.handle());
 
             // The window is created hidden, so the app is tray-only unless the
             // user asked for the details window on launch.

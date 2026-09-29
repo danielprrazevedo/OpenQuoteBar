@@ -51,14 +51,6 @@ pub(super) async fn error_message(response: Response) -> String {
         .unwrap_or_else(|| body.chars().take(200).collect())
 }
 
-/// Current unix timestamp, in seconds.
-pub(super) fn unix_now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|since_epoch| since_epoch.as_secs() as i64)
-        .unwrap_or_default()
-}
-
 /// Shape of an error body: `{ "error": { "message": ... } }`.
 #[derive(Debug, serde::Deserialize)]
 struct ErrorEnvelope {

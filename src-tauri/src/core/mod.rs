@@ -5,11 +5,13 @@
 //! [`crate::adapters`] and depend on this module, never the other way around.
 
 pub mod autostart;
+pub mod balances;
 pub mod config;
 pub mod platform;
 pub mod preferences;
 pub mod secrets;
 pub mod state;
+pub mod time;
 pub mod types;
 
 pub use state::AppState;
