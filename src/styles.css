@@ -462,6 +462,12 @@ body {
   color: #2563eb;
 }
 
+.balance__stamp {
+  font-size: 10px;
+  color: #98a2b3;
+  white-space: nowrap;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f2f4f7;

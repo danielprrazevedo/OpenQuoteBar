@@ -267,9 +267,17 @@ function balanceRow(provider: ProviderBalance): HTMLLIElement {
 
   const detail = document.createElement("span");
   detail.className = "balance__detail";
-  // A failure is the most useful thing to show; otherwise the label says what
-  // the number is.
-  detail.textContent = provider.error ?? provider.snapshot?.amounts[0]?.label ?? "";
+  // A failure is the most useful thing to show. Otherwise the label says what
+  // the number is — unless the provider reports several currencies, in which
+  // case no single label describes them all.
+  const amountsOf = provider.snapshot?.amounts ?? [];
+  detail.textContent =
+    provider.error ??
+    (amountsOf.length === 1
+      ? amountsOf[0].label
+      : amountsOf.length > 1
+        ? strings.balance.perCurrency
+        : "");
 
   text.append(name, detail);
 
@@ -302,7 +310,13 @@ function balanceRow(provider: ProviderBalance): HTMLLIElement {
   tag.dataset.state = badge.state;
   tag.textContent = badge.label;
 
-  right.append(overlay(amounts), tag);
+  // When each value was read, so a stale one is recognisable at a glance.
+  const stamp = document.createElement("span");
+  stamp.className = "balance__stamp";
+  stamp.textContent =
+    provider.updatedAt !== null ? relativeTime(provider.updatedAt) : strings.balance.updated.never;
+
+  right.append(overlay(amounts), overlay(tag, stamp));
 
   row.append(avatar, text, right);
 

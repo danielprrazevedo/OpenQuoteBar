@@ -16,6 +16,7 @@ export const strings = {
     noProviders: "No providers enabled. Turn one on in Settings.",
     noBalances: "No balances yet. Add an API key in Settings.",
     noValue: "—",
+    perCurrency: "Per currency",
     autoRefresh: (minutes: number) => `Auto-refresh every ${minutes} min`,
     providers: (count: number) => `${count} provider${count === 1 ? "" : "s"}`,
     errors: (count: number) => `${count} error${count === 1 ? "" : "s"}`,
