@@ -1,0 +1,122 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: Verify the version and build the changelog
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+      changelog: ${{ steps.cliff.outputs.content }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # git-cliff needs the tags and the full history to bound the range.
+          fetch-depth: 0
+
+      - name: Read the version from package.json
+        id: version
+        run: echo "value=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Read the version from Cargo.toml
+        id: cargo-version
+        run: |
+          value=$(node -e "const m = require('fs').readFileSync('src-tauri/Cargo.toml', 'utf8').match(/^version = \"(.*)\"/m); console.log(m ? m[1] : '')")
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+      # A release tagged with a version the app does not report would ship an
+      # update that lies about itself, so the mismatch fails the run instead.
+      - name: Check the tag matches the app version
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+          PACKAGE_VERSION: ${{ steps.version.outputs.value }}
+          CARGO_VERSION: ${{ steps.cargo-version.outputs.value }}
+        run: |
+          tag_version="${TAG#v}"
+
+          if [ "$tag_version" != "$PACKAGE_VERSION" ]; then
+            echo "::error::tag ${TAG} does not match package.json ${PACKAGE_VERSION}"
+            exit 1
+          fi
+
+          if [ "$tag_version" != "$CARGO_VERSION" ]; then
+            echo "::error::tag ${TAG} does not match Cargo.toml ${CARGO_VERSION}"
+            exit 1
+          fi
+
+          echo "tag, package.json and Cargo.toml all say ${tag_version}"
+
+      - name: Build the changelog
+        id: cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+
+  publish:
+    name: Build and publish (${{ matrix.label }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS universal
+            platform: macos-latest
+            args: --target universal-apple-darwin
+          - label: Windows x64
+            platform: windows-latest
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    env:
+      # See the note in ci.yml: NASM is required by aws-lc-sys on Windows x86-64
+      # and the runner images do not ship it.
+      AWS_LC_SYS_PREBUILT_NASM: "1"
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', needs.prepare.outputs.version) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and attach to the release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: OpenQuoteBar ${{ env.RELEASE_TAG }}
+          releaseBody: ${{ needs.prepare.outputs.changelog }}
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

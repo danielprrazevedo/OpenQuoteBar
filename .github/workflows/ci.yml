@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  checks:
+    name: Checks (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint, format and typecheck
+        run: pnpm check
+
+      - name: Test the backend
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  windows:
+    name: Build and test (Windows)
+    runs-on: windows-latest
+    env:
+      # aws-lc-sys (pulled in by rustls through reqwest) needs the NASM
+      # assembler when building for Windows x86-64, and the runner images do not
+      # ship it. This asks for the prebuilt objects the crate provides; the
+      # variable is ignored when NASM happens to be present.
+      AWS_LC_SYS_PREBUILT_NASM: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Compiling and testing on Windows is what proves the Windows-specific
+      # paths (credential store, registry autostart, tray) build at all. It does
+      # not prove the tray looks or behaves right on a real desktop.
+      - name: Test the backend
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build the frontend
+        run: pnpm build
