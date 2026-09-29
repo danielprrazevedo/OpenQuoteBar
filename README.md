@@ -86,6 +86,18 @@ normalized `BalanceSnapshot`, so the UI never has to know how a provider express
 snapshot carries one amount per currency — DeepSeek can report both USD and CNY — and amounts in
 different currencies are never summed together.
 
+## Refreshing
+
+Balances are refreshed by a background loop that runs a cycle as soon as the app starts and then
+every 5 to 15 minutes, according to the **Refresh interval** in Settings (default: 10). Providers are
+fetched concurrently, and the tray menu's **Refresh now** triggers a cycle immediately. The tray
+tooltip mirrors the state — updating, how many providers, how many are failing, and when the values
+were last refreshed.
+
+A failed fetch never clears the last value it managed to read: the cache keeps the previous snapshot
+and records the error alongside it, so a provider that is briefly unreachable keeps showing the
+balance you already knew about.
+
 ## Project layout
 
 ```

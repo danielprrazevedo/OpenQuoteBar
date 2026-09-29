@@ -1,6 +1,6 @@
 //! Domain types shared across the application.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Static information about the running application.
 #[derive(Debug, Clone, Serialize)]
@@ -17,7 +17,7 @@ pub struct AppInfo {
 ///
 /// A provider may report more than one: DeepSeek, for instance, can hold
 /// balances in both USD and CNY.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BalanceAmount {
     /// How much is available, expressed in [`currency`](Self::currency).
@@ -32,7 +32,7 @@ pub struct BalanceAmount {
 ///
 /// Every adapter returns this shape, so the UI never has to know how a given
 /// provider expresses "balance".
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BalanceSnapshot {
     /// Provider identifier, matching `config.toml`.

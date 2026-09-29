@@ -11,6 +11,7 @@ interface AppInfo {
 /** Mirrors `core::preferences::Preferences` on the Rust side. */
 interface Preferences {
   openWindowOnStart: boolean;
+  pollIntervalMinutes: number;
 }
 
 /** Mirrors `ui::ProviderView` on the Rust side. */
@@ -314,6 +315,31 @@ window.addEventListener("DOMContentLoaded", async () => {
     (value) => invoke("set_launch_at_login", { value }),
     setStatus,
   );
+
+  const interval = query<HTMLSelectElement>("#poll-interval");
+  if (interval) {
+    invoke<Preferences>("get_preferences")
+      .then((preferences) => {
+        interval.value = String(preferences.pollIntervalMinutes);
+      })
+      .catch(() => setStatus("Could not read the refresh interval."));
+
+    interval.addEventListener("change", async () => {
+      interval.disabled = true;
+      try {
+        // The backend clamps, so it decides what the setting actually became.
+        const stored = await invoke<number>("set_poll_interval", {
+          minutes: Number(interval.value),
+        });
+        interval.value = String(stored);
+        setStatus("");
+      } catch (error) {
+        setStatus(String(error));
+      } finally {
+        interval.disabled = false;
+      }
+    });
+  }
 
   await listen<string>("navigate", (event) => {
     if (event.payload === "balance" || event.payload === "settings") {

@@ -12,6 +12,7 @@ use crate::{
     adapters,
     core::{
         autostart,
+        balances::ProviderBalance,
         config::{self, KeyType},
         preferences,
         secrets::{KeyringStore, SecretStore},
@@ -19,6 +20,7 @@ use crate::{
         types::BalanceSnapshot,
         AppInfo,
     },
+    poller,
 };
 
 /// Returns static information about the running application.
@@ -151,4 +153,22 @@ pub async fn fetch_provider_balance(
         .fetch_balance(&credentials)
         .await
         .map_err(|error| error.to_string())
+}
+
+/// Returns the last known balance of every configured provider.
+#[tauri::command]
+pub fn get_balances(app: AppHandle) -> Vec<ProviderBalance> {
+    poller::snapshot(&app)
+}
+
+/// Asks the poller to run a refresh cycle right away.
+#[tauri::command]
+pub fn refresh_balances(app: AppHandle) {
+    poller::request_refresh(&app);
+}
+
+/// Persists the polling interval, returning the value that was actually stored.
+#[tauri::command]
+pub fn set_poll_interval(app: AppHandle, minutes: u32) -> Result<u32, String> {
+    preferences::set_poll_interval_minutes(&app, minutes)
 }

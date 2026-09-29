@@ -3,12 +3,12 @@
 //! Refreshing is driven by [`crate::poller`]; this module only holds the state
 //! and the transitions, so the rules can be tested without a network.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::core::{time::unix_now, types::BalanceSnapshot};
 
 /// How a provider's last fetch went.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderStatus {
     /// Configured but never fetched, or currently disabled.
@@ -22,7 +22,7 @@ pub enum ProviderStatus {
 }
 
 /// What we know about one provider.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderBalance {
     /// Provider identifier, matching `config.toml`.

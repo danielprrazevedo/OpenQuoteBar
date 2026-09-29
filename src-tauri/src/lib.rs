@@ -42,6 +42,9 @@ pub fn run() {
             ui::set_provider_key,
             ui::delete_provider_key,
             ui::fetch_provider_balance,
+            ui::get_balances,
+            ui::refresh_balances,
+            ui::set_poll_interval,
         ])
         .setup(|app| {
             // Tray-only apps have no visible window, which macOS treats as an
