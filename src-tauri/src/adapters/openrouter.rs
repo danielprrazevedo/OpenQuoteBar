@@ -15,7 +15,10 @@ use async_trait::async_trait;
 use reqwest::{header::HeaderMap, Client, Response, StatusCode};
 use serde::{de::DeserializeOwned, Deserialize};
 
-use crate::core::{config::KeyType, types::BalanceSnapshot};
+use crate::core::{
+    config::KeyType,
+    types::{BalanceAmount, BalanceSnapshot},
+};
 
 use super::{AdapterError, Credentials, ProviderAdapter};
 
@@ -151,9 +154,11 @@ impl OpenRouterAdapter {
         BalanceSnapshot {
             provider_id: ID.to_string(),
             display_name: DISPLAY_NAME.to_string(),
-            amount,
-            currency: CURRENCY.to_string(),
-            label: label.to_string(),
+            amounts: vec![BalanceAmount {
+                amount,
+                currency: CURRENCY.to_string(),
+                label: label.to_string(),
+            }],
             fetched_at: unix_now(),
         }
     }
@@ -306,11 +311,14 @@ mod tests {
             .await
             .expect("should succeed");
 
-        assert_eq!(snapshot.amount, 74.75);
-        assert_eq!(snapshot.currency, "USD");
-        assert_eq!(snapshot.label, "Credits remaining");
         assert_eq!(snapshot.provider_id, ID);
         assert!(snapshot.fetched_at > 0);
+        assert_eq!(snapshot.amounts.len(), 1);
+
+        let amount = &snapshot.amounts[0];
+        assert_eq!(amount.amount, 74.75);
+        assert_eq!(amount.currency, "USD");
+        assert_eq!(amount.label, "Credits remaining");
     }
 
     #[tokio::test]
@@ -329,8 +337,9 @@ mod tests {
             .await
             .expect("should succeed");
 
-        assert_eq!(snapshot.amount, 12.5);
-        assert_eq!(snapshot.label, "Key limit remaining");
+        assert_eq!(snapshot.amounts.len(), 1);
+        assert_eq!(snapshot.amounts[0].amount, 12.5);
+        assert_eq!(snapshot.amounts[0].label, "Key limit remaining");
     }
 
     #[tokio::test]
@@ -355,7 +364,7 @@ mod tests {
             .await
             .expect("should succeed");
 
-        assert_eq!(snapshot.amount, 6.0);
+        assert_eq!(snapshot.amounts[0].amount, 6.0);
     }
 
     #[tokio::test]

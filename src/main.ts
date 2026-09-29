@@ -21,13 +21,18 @@ interface ProviderView {
   hasKey: boolean;
 }
 
+/** Mirrors `core::types::BalanceAmount` on the Rust side. */
+interface BalanceAmount {
+  amount: number;
+  currency: string;
+  label: string;
+}
+
 /** Mirrors `core::types::BalanceSnapshot` on the Rust side. */
 interface BalanceSnapshot {
   providerId: string;
   displayName: string;
-  amount: number;
-  currency: string;
-  label: string;
+  amounts: BalanceAmount[];
   fetchedAt: number;
 }
 
@@ -226,7 +231,9 @@ function providerRow(
       const snapshot = await invoke<BalanceSnapshot>("fetch_provider_balance", {
         providerId: provider.id,
       });
-      result.textContent = `${formatAmount(snapshot.amount, snapshot.currency)} available · ${snapshot.label}`;
+      result.textContent = snapshot.amounts
+        .map((it) => `${formatAmount(it.amount, it.currency)} ${it.label}`)
+        .join(" · ");
       result.dataset.state = "ok";
     } catch (error) {
       result.textContent = String(error);
