@@ -10,17 +10,64 @@
 
   <body>
     <main class="shell">
-      <header class="shell__header">
-        <span class="shell__mark" aria-hidden="true">$</span>
-        <h1 class="shell__title">OpenQuoteBar</h1>
-      </header>
+      <section class="view" id="view-balance">
+        <header class="view__header">
+          <span class="mark" aria-hidden="true">$</span>
+          <h1 class="view__title">OpenQuoteBar</h1>
+        </header>
 
-      <section class="shell__body">
-        <p class="shell__lead" id="app-info">Connecting to the backend…</p>
-        <p class="shell__hint">
-          Provider balances are not wired up yet. The tray icon, adapters and details window land
-          with the next issues.
+        <p class="lead" id="app-info">Connecting to the backend…</p>
+        <p class="hint">
+          Provider balances are not wired up yet. The adapters and the details window land with the
+          next issues.
         </p>
+
+        <footer class="view__footer">
+          <button class="link" type="button" data-navigate="settings">Settings</button>
+        </footer>
+      </section>
+
+      <section class="view" id="view-settings" hidden>
+        <header class="view__header">
+          <h1 class="view__title">Settings</h1>
+          <button class="link link--end" type="button" data-navigate="balance">Back</button>
+        </header>
+
+        <ul class="settings">
+          <li class="setting">
+            <span class="setting__text">
+              <span class="setting__label">Open window on launch</span>
+              <span class="setting__hint">
+                Start with the details window instead of the menu bar icon alone.
+              </span>
+            </span>
+            <input
+              class="switch"
+              type="checkbox"
+              id="open-window-on-start"
+              aria-label="Open window on launch"
+            />
+          </li>
+
+          <li class="setting">
+            <span class="setting__text">
+              <span class="setting__label">Launch at login</span>
+              <span class="setting__hint">Start OpenQuoteBar automatically when you log in.</span>
+            </span>
+            <input
+              class="switch"
+              type="checkbox"
+              id="launch-at-login"
+              aria-label="Launch at login"
+            />
+          </li>
+        </ul>
+
+        <p class="hint hint--status" id="settings-status" role="status"></p>
+
+        <footer class="view__footer">
+          <span class="meta" id="settings-app-info"></span>
+        </footer>
       </section>
     </main>
   </body>
