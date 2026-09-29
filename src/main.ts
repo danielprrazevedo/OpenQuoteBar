@@ -13,7 +13,25 @@ interface Preferences {
   openWindowOnStart: boolean;
 }
 
+/** Mirrors `ui::ProviderView` on the Rust side. */
+interface ProviderView {
+  id: string;
+  enabled: boolean;
+  keyType: "management" | "standard" | null;
+  hasKey: boolean;
+}
+
 type View = "balance" | "settings";
+
+const PROVIDER_LABELS: Record<string, string> = {
+  openrouter: "OpenRouter",
+  deepseek: "DeepSeek",
+};
+
+const KEY_TYPE_LABELS: Record<string, string> = {
+  management: "Management key",
+  standard: "Standard key",
+};
 
 function query<T extends HTMLElement>(selector: string): T | null {
   return document.querySelector<T>(selector);
@@ -30,6 +48,10 @@ function navigate(view: View): void {
       element.hidden = name !== view;
     }
   }
+}
+
+function label(provider: ProviderView): string {
+  return PROVIDER_LABELS[provider.id] ?? provider.id;
 }
 
 /**
@@ -66,6 +88,112 @@ function bindSwitch(
   });
 }
 
+/** Builds the settings row for one provider. */
+function providerRow(
+  provider: ProviderView,
+  refresh: () => Promise<void>,
+  setStatus: (message: string) => void,
+): HTMLLIElement {
+  const row = document.createElement("li");
+  row.className = "provider";
+
+  const head = document.createElement("div");
+  head.className = "provider__head";
+
+  const text = document.createElement("span");
+  text.className = "provider__text";
+
+  const name = document.createElement("span");
+  name.className = "provider__name";
+  name.textContent = label(provider);
+
+  const meta = document.createElement("span");
+  meta.className = "provider__meta";
+  const keyKind = provider.keyType ? (KEY_TYPE_LABELS[provider.keyType] ?? provider.keyType) : null;
+  const keyState = provider.hasKey ? "key configured" : "no key stored";
+  meta.textContent = keyKind ? `${keyKind} · ${keyState}` : keyState;
+
+  text.append(name, meta);
+
+  const enabled = document.createElement("input");
+  enabled.type = "checkbox";
+  enabled.className = "switch";
+  enabled.checked = provider.enabled;
+  enabled.setAttribute("aria-label", `Enable ${label(provider)}`);
+  enabled.addEventListener("change", async () => {
+    enabled.disabled = true;
+    try {
+      await invoke("set_provider_enabled", { providerId: provider.id, value: enabled.checked });
+      setStatus("");
+    } catch (error) {
+      enabled.checked = !enabled.checked;
+      setStatus(String(error));
+    } finally {
+      enabled.disabled = false;
+    }
+  });
+
+  head.append(text, enabled);
+
+  const keyRow = document.createElement("div");
+  keyRow.className = "provider__key";
+
+  const input = document.createElement("input");
+  input.type = "password";
+  input.className = "key-input";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.placeholder = provider.hasKey ? "Key stored — type to replace" : "Paste the API key";
+  input.setAttribute("aria-label", `${label(provider)} API key`);
+
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "link";
+  save.textContent = "Save";
+  save.addEventListener("click", async () => {
+    const key = input.value.trim();
+    if (!key) {
+      setStatus("Enter a key before saving.");
+      return;
+    }
+
+    save.disabled = true;
+    try {
+      await invoke("set_provider_key", { providerId: provider.id, key });
+      input.value = "";
+      setStatus("");
+      await refresh();
+    } catch (error) {
+      setStatus(String(error));
+    } finally {
+      save.disabled = false;
+    }
+  });
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "link";
+  remove.textContent = "Remove";
+  remove.disabled = !provider.hasKey;
+  remove.addEventListener("click", async () => {
+    remove.disabled = true;
+    try {
+      await invoke("delete_provider_key", { providerId: provider.id });
+      setStatus("");
+      await refresh();
+    } catch (error) {
+      setStatus(String(error));
+    } finally {
+      remove.disabled = false;
+    }
+  });
+
+  keyRow.append(input, save, remove);
+  row.append(head, keyRow);
+
+  return row;
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   document.querySelectorAll<HTMLElement>("[data-navigate]").forEach((element) => {
     element.addEventListener("click", () => navigate(element.dataset.navigate as View));
@@ -77,6 +205,24 @@ window.addEventListener("DOMContentLoaded", async () => {
       status.textContent = message;
     }
   };
+
+  const providerList = query<HTMLUListElement>("#providers");
+  const refreshProviders = async () => {
+    if (!providerList) {
+      return;
+    }
+
+    const providers = await invoke<ProviderView[]>("get_providers");
+    providerList.replaceChildren(
+      ...providers.map((provider) => providerRow(provider, refreshProviders, setStatus)),
+    );
+  };
+
+  try {
+    await refreshProviders();
+  } catch (error) {
+    setStatus(String(error));
+  }
 
   try {
     const info = await invoke<AppInfo>("app_info");
