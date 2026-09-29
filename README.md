@@ -98,6 +98,55 @@ A failed fetch never clears the last value it managed to read: the cache keeps t
 and records the error alongside it, so a provider that is briefly unreachable keeps showing the
 balance you already knew about.
 
+## Building
+
+```bash
+pnpm install
+pnpm tauri build
+```
+
+That produces the installers for the machine you are on:
+
+| Platform | Artifacts                                                              |
+| -------- | ---------------------------------------------------------------------- |
+| macOS    | `src-tauri/target/release/bundle/dmg/*.dmg` and `.../macos/*.app`      |
+| Windows  | `src-tauri/target/release/bundle/msi/*.msi` and `.../nsis/*-setup.exe` |
+
+The macOS bundle is signed **ad-hoc** (`bundle.macOS.signingIdentity = "-"`), which is what stops
+Apple Silicon builds downloaded from a release from being reported as damaged. It is not a real
+signature: macOS still asks the user to allow the app the first time (System Settings → Privacy &
+Security → Open Anyway), and Windows SmartScreen warns about an unknown publisher. Real signing is
+deliberately out of scope for now, but the workflow is ready for the certificates once they exist.
+
+Linux is not supported.
+
+## Releases
+
+Releases are built by GitHub Actions:
+
+- `.github/workflows/ci.yml` runs the checks and tests on macOS and compiles and tests the backend on
+  Windows, on every push to `main` and every pull request. It does not exercise the tray or the
+  autostart integration, which need a real desktop.
+- `.github/workflows/release.yml` runs on a `v*` tag, builds a universal macOS DMG plus the Windows
+  installers, and opens a **draft** release with the artifacts and the changelog.
+
+To cut a release:
+
+1. Bump `version` in `package.json` **and** `src-tauri/Cargo.toml`. The app itself reads the version
+   from `package.json`, through `tauri.conf.json`.
+2. Regenerate the changelog with `pnpm changelog` (needs [`git-cliff`](https://git-cliff.org)).
+3. Commit, then tag and push:
+
+   ```bash
+   git tag v0.2.0
+   git push origin main --tags
+   ```
+
+4. Review the draft release and publish it.
+
+The workflow fails the run when the tag does not match the version in `package.json` and
+`Cargo.toml`, so a release can never claim a version the app does not report.
+
 ## Project layout
 
 ```
