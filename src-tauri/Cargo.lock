@@ -2909,7 +2909,7 @@ dependencies = [
 
 [[package]]
 name = "openquotebar"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "keyring",

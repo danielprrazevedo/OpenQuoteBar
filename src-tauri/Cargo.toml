@@ -1,6 +1,6 @@
 [package]
 name = "openquotebar"
-version = "0.1.0"
+version = "0.1.1"
 description = "Menu bar / tray app showing the available balance of LLM API providers."
 authors = ["OpenQuoteBar contributors"]
 edition = "2021"
