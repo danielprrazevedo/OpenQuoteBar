@@ -1,6 +1,7 @@
 //! The tray / menu bar icon and its menu.
 
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     App, AppHandle, Emitter, Listener, Manager, Runtime,
@@ -46,10 +47,23 @@ pub fn build(app: &App) -> tauri::Result<()> {
             _ => {}
         });
 
-    // Without a window icon there is nothing to show in the tray; the caller
-    // keeps running regardless so the rest of the app still works.
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
+    // A menu bar icon should be a template image: monochrome and alpha-only, so
+    // the system tints it to match light and dark menu bars. Windows has no such
+    // concept, so it gets the app mark, which reads on any taskbar colour.
+    #[cfg(target_os = "macos")]
+    const TRAY_ICON: &[u8] = include_bytes!("../../icons/tray/88x88.png");
+    #[cfg(not(target_os = "macos"))]
+    const TRAY_ICON: &[u8] = include_bytes!("../../icons/icon.png");
+
+    match Image::from_bytes(TRAY_ICON) {
+        Ok(icon) => {
+            builder = builder
+                .icon(icon)
+                .icon_as_template(cfg!(target_os = "macos"));
+        }
+        // A tray without an icon is a poor tray, but not worth taking the app
+        // down for: everything else keeps working.
+        Err(error) => eprintln!("could not load the tray icon: {error}"),
     }
 
     builder.build(app)?;
