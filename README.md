@@ -1,15 +1,112 @@
 # OpenQuoteBar
 
-Lightweight menu bar / system tray app (macOS and Windows) that shows the available balance of
-your LLM API providers. The app is provider-agnostic: every provider is an adapter behind a single
-interface. Milestone 1 ships **OpenRouter** and **DeepSeek**; more providers land later.
+A lightweight menu bar / system tray app (macOS and Windows) that keeps your **remaining LLM API
+credits** in sight, without opening a dashboard per provider.
+
+If you top up several providers, finding out how much you have left means signing in to each one in
+turn. OpenQuoteBar reads them for you and shows a single, always-current number in the menu bar,
+with a per-provider breakdown one click away.
+
+It is deliberately boring about the things that matter:
+
+- **Provider-agnostic.** Every provider is an adapter behind one small interface, so supporting a
+  new one never touches the core or the UI. See the [roadmap](#roadmap--to-build) for what is next.
+- **Local-first.** No account, no telemetry, no server. The only network calls are the balance
+  requests to the providers you enable.
+- **Secrets stay in the OS.** API keys live in the macOS Keychain or Windows Credential Manager,
+  never in a config file and never in the UI — it only ever learns _whether_ a key is stored.
+- **Honest numbers.** Amounts are never invented: different currencies are shown side by side and
+  never summed, a provider that fails keeps showing its last known value, and a key with nothing to
+  report says so instead of showing a confident `0`.
 
 > Linux is out of scope for now.
 
+## Features
+
+- Menu bar / tray icon with a rich popover: the consolidated total plus one tile per provider.
+- A details window with the same breakdown, a **Refresh** button, and per-provider status.
+- Background refresh every 5–15 minutes (default 10), with **Refresh now** from the tray.
+- Per-provider enable/disable, and an opt-in **Show in tray** switch so the menu stays short.
+- Test a provider's credentials from Settings and read the exact reason a fetch failed.
+- Launch at login and "open the window on launch" preferences.
+
+Supported providers today: **OpenRouter** and **DeepSeek**.
+
+## Screenshots
+
+| Menu bar popover                                                            | Details window                                                                             | Settings                                                                                           |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| ![The tray popover, anchored under the menu bar icon](screenshots/tray.png) | ![The details window, with the total and the per-provider breakdown](screenshots/home.png) | ![The settings view, with general preferences and per-provider controls](screenshots/settings.png) |
+
 ## Status
 
-Milestone 1 — scaffold only. The app boots, exposes `app_info` to the webview and already pulls in
-the base Rust dependencies. Balances are not fetched yet; see the open issues for what comes next.
+Working app, version `0.3.0`. The foundation is in place — provider adapters, secure key storage,
+the polling loop with cached values, the tray popover and the settings view. The current focus is
+breadth: more providers, tracked in [Roadmap / To build](#roadmap--to-build).
+
+## Roadmap / To build
+
+The architecture is built so that **adding a provider is one self-contained adapter**: it implements
+[`ProviderAdapter`](src-tauri/src/adapters/mod.rs) and returns a normalized `BalanceSnapshot`, and
+nothing in `core/` or the UI has to change. What follows is the list of providers worth adding,
+grouped by how easily each one can be read.
+
+Endpoints are listed to scope the work — confirm them against each provider's current docs before
+implementing, since providers move APIs around.
+
+### Already supported
+
+| Provider   | How the balance is read                                                |
+| ---------- | ---------------------------------------------------------------------- |
+| OpenRouter | `GET /api/v1/credits` (management key) or `GET /api/v1/key` (per-key). |
+| DeepSeek   | `GET /user/balance` — one entry per currency.                          |
+
+### Next — a real balance endpoint, readable with a normal API key
+
+The ideal shape: one GET with an ordinary key returns the remaining balance.
+
+| Provider        | Endpoint                                 | Balance field(s)                                       |
+| --------------- | ---------------------------------------- | ------------------------------------------------------ |
+| Moonshot (Kimi) | `GET /v1/users/me/balance`               | `available_balance`, `voucher_balance`, `cash_balance` |
+| Novita AI       | `GET /openapi/v1/billing/balance/detail` | `availableBalance` (unit is 1/10000 USD)               |
+| Hyperbolic      | `GET /v2/customer/balance`               | response schema to confirm                             |
+| DeepInfra       | `GET /v1/me?checklist=true`              | `checklist.stripe_balance` (sign inverted)             |
+
+### Then — an admin/management key, or a usage report to interpret
+
+Here the credential is not the ordinary inference key, so the adapter has to explain what to store,
+and the figure shown is often a derived spend or a quota rather than a true prepaid balance.
+
+| Provider    | Endpoint(s)                                                                | Credential                     |
+| ----------- | -------------------------------------------------------------------------- | ------------------------------ |
+| xAI (Grok)  | `GET /v1/billing/teams/{team_id}/prepaid/balance` on `management-api.x.ai` | Management key + team id       |
+| Anthropic   | `GET /v1/organizations/cost_report`, `/usage_report/messages`              | Admin API key                  |
+| OpenAI      | `GET /v1/organization/costs`, `/usage/...`                                 | Admin key (`sk-admin-…`)       |
+| Mistral AI  | `GET /v1/admin/usage?month=&year=`                                         | Admin key                      |
+| Together AI | `GET /v1/billing/usage?month=YYYY-MM`                                      | Org-scoped key (beta)          |
+| ElevenLabs  | `GET /v1/user/subscription`                                                | Normal key (quota, not credit) |
+| Perplexity  | analytics `.../computer/usage`                                             | Org analytics key              |
+
+### Cloud billing — a different kind of integration
+
+Providers whose spend lives in a cloud account (Vertex AI, Azure OpenAI, AWS Bedrock) expose no
+service-level balance; reading it means the cloud provider's own billing API (Cloud Billing, Cost
+Management, Cost Explorer) with cloud credentials. That is a large, separate scope and is not
+planned in the near term.
+
+### Not applicable / no public API
+
+Groq, Cerebras, Cohere, Replicate, Fireworks, Zhipu/GLM, Alibaba DashScope, Nebius, Voyage, Jina and
+Runway expose no documented way to read a balance from a normal key. Google AI Studio's free tier
+has rate limits but no balance. Local runtimes (Ollama, LM Studio) have no account at all. These are
+listed so the "why not X?" question has an answer.
+
+### Beyond providers
+
+Smaller items tracked alongside the provider work:
+
+- Real code signing for macOS and Windows — the release workflow is already structured for it.
+- Translations; the UI's user-facing strings already live in one module (`src/strings.ts`).
 
 ## Prerequisites
 
