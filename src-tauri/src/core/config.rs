@@ -42,6 +42,12 @@ pub struct ProviderConfig {
     /// Whether the app should read this provider's balance.
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Whether this provider's balance is previewed in the tray menu.
+    ///
+    /// Off by default: the preview is opt-in per provider, so a long provider
+    /// list does not clutter the menu.
+    #[serde(default)]
+    pub show_in_tray: bool,
     /// Provider-specific credential kind, when the provider has more than one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_type: Option<KeyType>,
@@ -137,11 +143,34 @@ pub fn set_provider_enabled<R: Runtime>(
     provider_id: &str,
     enabled: bool,
 ) -> Result<Config, ConfigError> {
+    update_provider(app, provider_id, |provider| provider.enabled = enabled)
+}
+
+/// Sets `show_in_tray` for one provider and persists the file.
+///
+/// Like [`set_provider_enabled`], the file is rewritten from the parsed values
+/// and only the bundled documentation header survives.
+pub fn set_provider_show_in_tray<R: Runtime>(
+    app: &AppHandle<R>,
+    provider_id: &str,
+    show_in_tray: bool,
+) -> Result<Config, ConfigError> {
+    update_provider(app, provider_id, |provider| {
+        provider.show_in_tray = show_in_tray
+    })
+}
+
+/// Applies `change` to one provider and rewrites the configuration file.
+fn update_provider<R: Runtime>(
+    app: &AppHandle<R>,
+    provider_id: &str,
+    change: impl FnOnce(&mut ProviderConfig),
+) -> Result<Config, ConfigError> {
     let path = path(app)?;
     let mut config = load(app)?;
 
     match config.providers.iter_mut().find(|it| it.id == provider_id) {
-        Some(provider) => provider.enabled = enabled,
+        Some(provider) => change(provider),
         None => return Err(ConfigError::UnknownProvider(provider_id.to_string())),
     }
 
@@ -219,6 +248,29 @@ mod tests {
         let config = parse("[[providers]]\nid = \"deepseek\"\n").expect("should parse");
         assert!(config.providers[0].enabled);
         assert_eq!(config.providers[0].key_type, None);
+    }
+
+    #[test]
+    fn show_in_tray_defaults_to_false_when_omitted() {
+        let config = parse("[[providers]]\nid = \"deepseek\"\n").expect("should parse");
+        assert!(!config.providers[0].show_in_tray);
+    }
+
+    #[test]
+    fn show_in_tray_is_read_when_present() {
+        let config =
+            parse("[[providers]]\nid = \"deepseek\"\nshow_in_tray = true\n").expect("should parse");
+        assert!(config.providers[0].show_in_tray);
+    }
+
+    #[test]
+    fn round_tripping_keeps_show_in_tray() {
+        let config =
+            parse("[[providers]]\nid = \"deepseek\"\nshow_in_tray = true\n").expect("should parse");
+        let body = toml::to_string_pretty(&config).expect("should serialize");
+        let reparsed = parse(&format!("{}\n{}", header(), body)).expect("should parse again");
+
+        assert!(reparsed.providers[0].show_in_tray);
     }
 
     #[test]

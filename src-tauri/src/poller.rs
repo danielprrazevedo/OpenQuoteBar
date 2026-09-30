@@ -193,6 +193,7 @@ fn sync_cache<R: Runtime>(app: &AppHandle<R>, http: &Client, providers: &[Provid
         match balances.get_mut(&provider.id) {
             Some(entry) => {
                 entry.enabled = provider.enabled;
+                entry.show_in_tray = provider.show_in_tray;
                 entry.display_name = display_name;
 
                 if !provider.enabled {
@@ -200,10 +201,9 @@ fn sync_cache<R: Runtime>(app: &AppHandle<R>, http: &Client, providers: &[Provid
                 }
             }
             None => {
-                balances.insert(
-                    provider.id.clone(),
-                    ProviderBalance::new(&provider.id, display_name, provider.enabled),
-                );
+                let mut entry = ProviderBalance::new(&provider.id, display_name, provider.enabled);
+                entry.show_in_tray = provider.show_in_tray;
+                balances.insert(provider.id.clone(), entry);
             }
         }
     }

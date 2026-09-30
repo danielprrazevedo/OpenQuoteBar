@@ -55,16 +55,19 @@ on macOS, `%APPDATA%\com.openquotebar.app\` on Windows:
 [[providers]]
 id = "openrouter"
 enabled = true
+show_in_tray = false
 key_type = "management"
 
 [[providers]]
 id = "deepseek"
 enabled = true
+show_in_tray = false
 ```
 
 `id` must match an adapter bundled with the app, and `enabled` decides whether the app reads that
-provider's balance. `key_type` is OpenRouter-specific: `management` reads the account-wide credits
-endpoint, `standard` reads the per-key limit instead.
+provider's balance. `show_in_tray` (optional, default `false`) decides whether that provider's
+balance shows up in the tray menu preview. `key_type` is OpenRouter-specific: `management` reads the
+account-wide credits endpoint, `standard` reads the per-key limit instead.
 
 **API keys are never written to that file.** They are stored in the OS credential store — macOS
 Keychain, Windows Credential Manager — under the service `com.openquotebar.app`, one entry per
@@ -93,6 +96,12 @@ every 5 to 15 minutes, according to the **Refresh interval** in Settings (defaul
 fetched concurrently, and the tray menu's **Refresh now** triggers a cycle immediately. The tray
 tooltip mirrors the state — updating, how many providers, how many are failing, and when the values
 were last refreshed.
+
+The tray menu itself previews the providers whose **Show in tray** switch is on, one row per provider
+with its last known balance. A provider that reports several currencies — DeepSeek can hold both USD
+and CNY — shows them side by side, and a currency that reads as zero is dropped when another one has
+money, the same rule the window's totals follow. The switch is per provider (the `show_in_tray`
+option in `config.toml`) and off by default, so the menu stays short until you opt a provider in.
 
 A failed fetch never clears the last value it managed to read: the cache keeps the previous snapshot
 and records the error alongside it, so a provider that is briefly unreachable keeps showing the

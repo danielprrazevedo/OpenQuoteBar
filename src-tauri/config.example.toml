@@ -10,17 +10,22 @@
 #
 # Each provider is a [[providers]] entry:
 #
-#   id        Stable identifier. It must match an adapter bundled with the app.
-#   enabled   Whether the app reads this provider's balance.
-#   key_type  OpenRouter only. "management" reads the account-wide credits
-#             endpoint (GET /api/v1/credits); "standard" reads the per-key
-#             limit (GET /api/v1/key). Omit it for other providers.
+#   id            Stable identifier. It must match an adapter bundled with the app.
+#   enabled       Whether the app reads this provider's balance.
+#   show_in_tray  Whether this provider's balance is previewed in the tray menu.
+#                 Optional, defaults to false. Turn it on per provider to keep
+#                 the menu short.
+#   key_type      OpenRouter only. "management" reads the account-wide credits
+#                 endpoint (GET /api/v1/credits); "standard" reads the per-key
+#                 limit (GET /api/v1/key). Omit it for other providers.
 
 [[providers]]
 id = "openrouter"
 enabled = true
+show_in_tray = false
 key_type = "management"
 
 [[providers]]
 id = "deepseek"
 enabled = true
+show_in_tray = false

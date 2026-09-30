@@ -164,6 +164,7 @@ mod tests {
         ProviderConfig {
             id: id.to_string(),
             enabled: true,
+            show_in_tray: false,
             key_type: None,
         }
     }

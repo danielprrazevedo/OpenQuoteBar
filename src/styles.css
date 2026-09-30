@@ -251,6 +251,18 @@ body {
   color: #667085;
 }
 
+.provider__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.provider__option-label {
+  font-size: 12.5px;
+  color: #475467;
+}
+
 .provider__key {
   display: flex;
   align-items: center;

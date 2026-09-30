@@ -69,6 +69,8 @@ pub struct ProviderView {
     pub id: String,
     /// Whether the app should read this provider's balance.
     pub enabled: bool,
+    /// Whether this provider's balance is previewed in the tray menu.
+    pub show_in_tray: bool,
     /// Provider-specific credential kind, when it has more than one.
     pub key_type: Option<KeyType>,
     /// Whether a key is stored in the OS credential store.
@@ -95,6 +97,7 @@ pub fn get_providers(app: AppHandle) -> Result<Vec<ProviderView>, String> {
             Ok(ProviderView {
                 id: provider.id.clone(),
                 enabled: provider.enabled,
+                show_in_tray: provider.show_in_tray,
                 key_type: provider.key_type,
                 has_key,
             })
@@ -111,7 +114,26 @@ pub fn set_provider_enabled(
 ) -> Result<(), String> {
     config::set_provider_enabled(&app, &provider_id, value)
         .map(|_| ())
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+
+    // A disabled provider disappears from the tray preview right away.
+    tray::refresh(&app);
+    Ok(())
+}
+
+/// Selects whether a provider's balance is previewed in the tray menu.
+#[tauri::command]
+pub fn set_provider_show_in_tray(
+    app: AppHandle,
+    provider_id: String,
+    value: bool,
+) -> Result<(), String> {
+    config::set_provider_show_in_tray(&app, &provider_id, value)
+        .map(|_| ())
+        .map_err(|error| error.to_string())?;
+
+    tray::refresh(&app);
+    Ok(())
 }
 
 /// Stores (or replaces) a provider's API key in the OS credential store.

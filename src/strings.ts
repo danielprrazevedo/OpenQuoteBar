@@ -33,6 +33,7 @@ export const strings = {
     standardKey: "Standard key",
     keyConfigured: "key configured",
     noKeyStored: "no key stored",
+    showInTray: "Show in tray",
     keyPlaceholder: {
       stored: "Key stored — type to replace",
       empty: "Paste the API key",

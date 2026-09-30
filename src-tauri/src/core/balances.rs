@@ -63,6 +63,8 @@ pub struct ProviderBalance {
     pub display_name: String,
     /// Whether the app is configured to refresh this provider.
     pub enabled: bool,
+    /// Whether this provider's balance is previewed in the tray menu.
+    pub show_in_tray: bool,
     /// How the last fetch went.
     pub status: ProviderStatus,
     /// Last value we managed to fetch. Deliberately kept across failures.
@@ -89,6 +91,7 @@ impl ProviderBalance {
             provider_id: provider_id.into(),
             display_name: display_name.into(),
             enabled,
+            show_in_tray: false,
             status: ProviderStatus::Idle,
             snapshot: None,
             error: None,
@@ -190,7 +193,7 @@ pub fn totals(balances: &[ProviderBalance]) -> Vec<CurrencyTotal> {
 }
 
 /// Whether an amount reads as `0.00`, which is what the user actually sees.
-fn renders_as_zero(amount: f64) -> bool {
+pub(crate) fn renders_as_zero(amount: f64) -> bool {
     amount.abs() < 0.005
 }
 
@@ -242,6 +245,7 @@ mod tests {
         let entry = provider("openrouter", true);
 
         assert_eq!(entry.status, ProviderStatus::Idle);
+        assert!(!entry.show_in_tray);
         assert!(entry.snapshot.is_none());
         assert!(entry.error.is_none());
         assert!(entry.error_kind.is_none());

@@ -39,6 +39,7 @@ pub fn run() {
             ui::set_launch_at_login,
             ui::get_providers,
             ui::set_provider_enabled,
+            ui::set_provider_show_in_tray,
             ui::set_provider_key,
             ui::delete_provider_key,
             ui::fetch_provider_balance,

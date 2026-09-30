@@ -67,6 +67,7 @@ interface BalancesReport {
 interface ProviderView {
   id: string;
   enabled: boolean;
+  showInTray: boolean;
   keyType: "management" | "standard" | null;
   hasKey: boolean;
 }
@@ -435,10 +436,45 @@ function providerRow(
   enabled.className = "switch";
   enabled.checked = provider.enabled;
   enabled.setAttribute("aria-label", name);
+
+  const trayRow = document.createElement("div");
+  trayRow.className = "provider__option";
+
+  const trayLabel = document.createElement("label");
+  trayLabel.className = "provider__option-label";
+  trayLabel.textContent = strings.provider.showInTray;
+
+  const tray = document.createElement("input");
+  tray.type = "checkbox";
+  tray.className = "switch";
+  tray.checked = provider.showInTray;
+  tray.disabled = !provider.enabled;
+  tray.setAttribute("aria-label", `${name} ${strings.provider.showInTray}`);
+  tray.addEventListener("change", async () => {
+    tray.disabled = true;
+    try {
+      await invoke("set_provider_show_in_tray", {
+        providerId: provider.id,
+        value: tray.checked,
+      });
+      setStatus("");
+    } catch (error) {
+      tray.checked = !tray.checked;
+      setStatus(String(error));
+    } finally {
+      // Toggling `enabled` above also gates this switch.
+      tray.disabled = !enabled.checked;
+    }
+  });
+
+  trayRow.append(trayLabel, tray);
+
   enabled.addEventListener("change", async () => {
     enabled.disabled = true;
     try {
       await invoke("set_provider_enabled", { providerId: provider.id, value: enabled.checked });
+      // A disabled provider cannot be previewed.
+      tray.disabled = !enabled.checked;
       setStatus("");
     } catch (error) {
       enabled.checked = !enabled.checked;
@@ -538,7 +574,7 @@ function providerRow(
   });
 
   testRow.append(test, result);
-  row.append(head, keyRow, testRow);
+  row.append(head, trayRow, keyRow, testRow);
 
   return row;
 }

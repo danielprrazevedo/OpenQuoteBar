@@ -2,14 +2,18 @@
 
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     App, AppHandle, Emitter, Listener, Manager, Runtime,
 };
 
 use crate::core::{
-    balances::{BalancesReport, CurrencyTotal, FailureKind, ProviderBalance, ProviderStatus},
+    balances::{
+        renders_as_zero, BalancesReport, CurrencyTotal, FailureKind, ProviderBalance,
+        ProviderStatus,
+    },
     time::unix_now,
+    types::BalanceAmount,
 };
 
 /// Id of the main window, as declared in `tauri.conf.json`.
@@ -27,14 +31,22 @@ const REFRESH: &str = "refresh";
 const SETTINGS: &str = "settings";
 const QUIT: &str = "quit";
 
+/// Prefix of the per-provider preview row ids.
+const BALANCE_PREFIX: &str = "tray-balance:";
+
+/// Ids of the preview rows are stable per provider, so the rebuild is cheap.
+fn balance_id(provider_id: &str) -> String {
+    format!("{BALANCE_PREFIX}{provider_id}")
+}
+
 /// Creates the tray icon, its tooltip and its menu.
 pub fn build(app: &App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, OPEN, "Open", true, None::<&str>)?;
-    let refresh = MenuItem::with_id(app, REFRESH, "Refresh now", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, SETTINGS, "Settings…", true, None::<&str>)?;
-    let separator = PredefinedMenuItem::separator(app)?;
-    let quit = MenuItem::with_id(app, QUIT, "Quit OpenQuoteBar", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &refresh, &settings, &separator, &quit])?;
+    let handle = app.handle().clone();
+
+    // The initial menu already carries whatever the cache knows; the polling
+    // loop keeps it current from here on.
+    let report = crate::poller::report(&handle);
+    let menu = build_menu(&handle, &report)?;
 
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip(APP_NAME)
@@ -68,20 +80,146 @@ pub fn build(app: &App) -> tauri::Result<()> {
 
     builder.build(app)?;
 
-    // The tooltip is the one surface that is always visible, so it doubles as
-    // the status indicator while the window is closed.
-    let handle = app.handle().clone();
+    if let Some(tray) = handle.tray_by_id(TRAY_ID) {
+        let _ = tray.set_tooltip(Some(&summarize(&report)));
+    }
+
+    // The tooltip and the menu both follow the cache, so the tray stays current
+    // whether the window is open or not.
     app.listen(crate::poller::BALANCES_EVENT, move |event| {
         let Ok(report) = serde_json::from_str::<BalancesReport>(event.payload()) else {
             return;
         };
 
-        if let Some(tray) = handle.tray_by_id(TRAY_ID) {
-            let _ = tray.set_tooltip(Some(&summarize(&report)));
-        }
+        render(&handle, &report);
     });
 
     Ok(())
+}
+
+/// Rebuilds the tray from the cache, e.g. after a preference changed.
+///
+/// The menu rows depend on `show_in_tray`, which lives in `config.toml` rather
+/// than in the balance event, so a config change has to ask for a fresh render
+/// instead of waiting for the next polling cycle.
+pub fn refresh<R: Runtime>(app: &AppHandle<R>) {
+    render(app, &crate::poller::report(app));
+}
+
+/// Rebuilds the tray menu and tooltip from a report.
+fn render<R: Runtime>(app: &AppHandle<R>, report: &BalancesReport) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+
+    match build_menu(app, report) {
+        Ok(menu) => {
+            let _ = tray.set_menu(Some(menu));
+        }
+        Err(error) => eprintln!("could not rebuild the tray menu: {error}"),
+    }
+
+    let _ = tray.set_tooltip(Some(&summarize(report)));
+}
+
+/// Builds the whole tray menu: the balance preview, if any, then the actions.
+fn build_menu<R: Runtime>(app: &AppHandle<R>, report: &BalancesReport) -> tauri::Result<Menu<R>> {
+    // Keep the rows alive for as long as the menu borrows them.
+    let mut preview: Vec<MenuItem<R>> = Vec::new();
+
+    for row in preview_rows(report) {
+        preview.push(MenuItem::with_id(
+            app,
+            row.id,
+            row.text,
+            false,
+            None::<&str>,
+        )?);
+    }
+
+    let open = MenuItem::with_id(app, OPEN, "Open", true, None::<&str>)?;
+    let refresh = MenuItem::with_id(app, REFRESH, "Refresh now", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, SETTINGS, "Settings…", true, None::<&str>)?;
+    let preview_separator = PredefinedMenuItem::separator(app)?;
+    let quit_separator = PredefinedMenuItem::separator(app)?;
+    let quit = MenuItem::with_id(app, QUIT, "Quit OpenQuoteBar", true, None::<&str>)?;
+
+    let mut items: Vec<&dyn IsMenuItem<R>> = Vec::new();
+
+    if !preview.is_empty() {
+        items.extend(preview.iter().map(|item| item as &dyn IsMenuItem<R>));
+        items.push(&preview_separator);
+    }
+
+    items.push(&open);
+    items.push(&refresh);
+    items.push(&settings);
+    items.push(&quit_separator);
+    items.push(&quit);
+
+    Menu::with_items(app, &items)
+}
+
+/// One provider row in the tray preview.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreviewRow {
+    /// Menu item id, stable per provider.
+    pub id: String,
+    /// Text shown in the menu.
+    pub text: String,
+}
+
+/// Builds the preview rows: the providers enabled and opted into the tray.
+///
+/// Order follows the configuration, so the menu does not reshuffle between
+/// refreshes.
+pub fn preview_rows(report: &BalancesReport) -> Vec<PreviewRow> {
+    report
+        .providers
+        .iter()
+        .filter(|provider| provider.enabled && provider.show_in_tray)
+        .map(|provider| PreviewRow {
+            id: balance_id(&provider.provider_id),
+            text: preview_text(provider),
+        })
+        .collect()
+}
+
+/// Renders one provider's preview row.
+fn preview_text(provider: &ProviderBalance) -> String {
+    let name = &provider.display_name;
+
+    match &provider.snapshot {
+        Some(snapshot) if !snapshot.amounts.is_empty() => {
+            let amounts = visible_amounts(&snapshot.amounts)
+                .into_iter()
+                .map(|amount| format_amount(amount.amount, &amount.currency))
+                .collect::<Vec<_>>()
+                .join(" · ");
+
+            format!("{name}: {amounts}")
+        }
+        _ if provider.status == ProviderStatus::Loading => format!("{name}: updating…"),
+        _ => format!("{name}: —"),
+    }
+}
+
+/// The amounts worth showing for one provider.
+///
+/// A currency that reads as zero is dropped when another one has money, since
+/// `CN¥0.00` next to `$10.00` is noise. A lone zero is kept: an account at zero
+/// should say so. Mirrors the rule the window's totals already follow.
+fn visible_amounts(amounts: &[BalanceAmount]) -> Vec<&BalanceAmount> {
+    let non_zero: Vec<&BalanceAmount> = amounts
+        .iter()
+        .filter(|amount| !renders_as_zero(amount.amount))
+        .collect();
+
+    if non_zero.is_empty() {
+        amounts.iter().collect()
+    } else {
+        non_zero
+    }
 }
 
 /// One line describing the cache, for the tray tooltip.
@@ -354,5 +492,132 @@ mod tests {
         assert_eq!(format_amount(142.1, "USD"), "$142.10");
         assert_eq!(format_amount(72.456, "CNY"), "CN¥72.46");
         assert_eq!(format_amount(3.0, "CHF"), "CHF 3.00");
+    }
+
+    /// Marks a provider as opted into the tray preview.
+    fn shown(mut entry: ProviderBalance) -> ProviderBalance {
+        entry.show_in_tray = true;
+        entry
+    }
+
+    #[test]
+    fn only_providers_opted_into_the_tray_are_previewed() {
+        let opted_in = shown(provider_with_value("openrouter", 10.0, "USD"));
+        let not_opted_in = provider_with_value("deepseek", 5.0, "USD");
+
+        let mut disabled = provider_with_value("acme", 3.0, "USD");
+        disabled.enabled = false;
+        disabled.show_in_tray = true;
+
+        let rows = preview_rows(&report(vec![opted_in, not_opted_in, disabled]));
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "tray-balance:openrouter");
+        assert_eq!(rows[0].text, "openrouter: $10.00");
+    }
+
+    #[test]
+    fn preview_rows_keep_the_report_order() {
+        let rows = preview_rows(&report(vec![
+            shown(provider_with_value("openrouter", 10.0, "USD")),
+            shown(provider_with_value("deepseek", 5.0, "USD")),
+        ]));
+
+        assert_eq!(rows[0].id, "tray-balance:openrouter");
+        assert_eq!(rows[1].id, "tray-balance:deepseek");
+    }
+
+    #[test]
+    fn a_provider_without_a_value_shows_a_placeholder() {
+        let rows = preview_rows(&report(vec![
+            shown(provider("openrouter", true, ProviderStatus::Loading)),
+            shown(provider("deepseek", true, ProviderStatus::Idle)),
+        ]));
+
+        assert_eq!(rows[0].text, "openrouter: updating…");
+        assert_eq!(rows[1].text, "deepseek: —");
+    }
+
+    /// A provider opted into the tray, reporting one amount per currency.
+    fn tray_provider(
+        provider_id: &str,
+        display_name: &str,
+        amounts: &[(f64, &str)],
+    ) -> ProviderBalance {
+        let mut entry = ProviderBalance::new(provider_id, display_name, true);
+        entry.show_in_tray = true;
+        entry.apply_success(BalanceSnapshot {
+            provider_id: provider_id.to_string(),
+            display_name: display_name.to_string(),
+            amounts: amounts
+                .iter()
+                .map(|(amount, currency)| BalanceAmount {
+                    amount: *amount,
+                    currency: (*currency).to_string(),
+                    label: format!("{currency} balance"),
+                })
+                .collect(),
+            fetched_at: unix_now(),
+        });
+        entry
+    }
+
+    /// The preview text for a single provider row.
+    fn row_text(entry: ProviderBalance) -> String {
+        preview_rows(&report(vec![entry])).remove(0).text
+    }
+
+    #[test]
+    fn every_currency_fits_on_one_provider_row() {
+        let row = row_text(tray_provider(
+            "deepseek",
+            "DeepSeek",
+            &[(72.0, "CNY"), (10.0, "USD")],
+        ));
+
+        assert_eq!(row, "DeepSeek: CN¥72.00 · $10.00");
+    }
+
+    #[test]
+    fn a_zero_currency_is_hidden_when_another_one_has_money() {
+        let row = row_text(tray_provider(
+            "deepseek",
+            "DeepSeek",
+            &[(0.0, "CNY"), (9.42, "USD")],
+        ));
+
+        // `CN¥0.00` next to real money is noise.
+        assert_eq!(row, "DeepSeek: $9.42");
+    }
+
+    #[test]
+    fn an_amount_that_rounds_to_zero_is_hidden_too() {
+        let row = row_text(tray_provider(
+            "deepseek",
+            "DeepSeek",
+            &[(0.001, "CNY"), (9.42, "USD")],
+        ));
+
+        assert_eq!(row, "DeepSeek: $9.42");
+    }
+
+    #[test]
+    fn a_lone_zero_is_still_shown() {
+        let row = row_text(tray_provider("deepseek", "DeepSeek", &[(0.0, "USD")]));
+
+        // Nothing else to show, so the zero is the answer.
+        assert_eq!(row, "DeepSeek: $0.00");
+    }
+
+    #[test]
+    fn every_currency_is_kept_when_they_are_all_zero() {
+        let row = row_text(tray_provider(
+            "deepseek",
+            "DeepSeek",
+            &[(0.0, "CNY"), (0.0, "USD")],
+        ));
+
+        // Dropping both would leave the row with nothing at all.
+        assert_eq!(row, "DeepSeek: CN¥0.00 · $0.00");
     }
 }
