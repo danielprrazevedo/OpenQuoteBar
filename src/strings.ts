@@ -15,6 +15,7 @@ export const strings = {
     settings: "Settings",
     noProviders: "No providers enabled. Turn one on in Settings.",
     noBalances: "No balances yet. Add an API key in Settings.",
+    noTrayProviders: "No providers shown here. Turn one on in Settings.",
     noValue: "—",
     perCurrency: "Per currency",
     autoRefresh: (minutes: number) => `Auto-refresh every ${minutes} min`,

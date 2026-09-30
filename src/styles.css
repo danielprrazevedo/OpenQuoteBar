@@ -579,3 +579,284 @@ body {
     color: #7aa2ff;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Tray popover
+   -------------------------------------------------------------------------- */
+
+html.popup-window {
+  background-color: transparent;
+}
+
+html.popup-window body {
+  display: block;
+  min-height: 0;
+  background-color: transparent;
+}
+
+html.popup-window .shell {
+  display: none;
+}
+
+#popup-root {
+  display: none;
+}
+
+html.popup-window #popup-root {
+  display: block;
+  padding: 24px;
+}
+
+.popup {
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e7ebf1;
+  border-radius: 16px;
+  background-color: #ffffff;
+  box-shadow: 0 14px 36px -8px rgb(16 24 40 / 26%);
+}
+
+.popup__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.popup__mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background-color: #2563eb;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.popup__titles {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.popup__name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #101828;
+}
+
+.popup__status {
+  font-size: 11px;
+  color: #98a2b3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.popup__icon-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background-color: #eff2f7;
+  color: #475467;
+  cursor: pointer;
+}
+
+.popup__icon-btn:hover {
+  background-color: #e7ebf1;
+}
+
+.popup__icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.popup__hero {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.popup__hero-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #98a2b3;
+}
+
+.popup__totals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+.popup__total {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #101828;
+}
+
+.popup__providers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.popup__tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #eef1f5;
+  border-radius: 12px;
+  background-color: #fbfcfd;
+}
+
+.popup__avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.popup__tile-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.popup__tile-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #101828;
+}
+
+.popup__tile-sub {
+  font-size: 10.5px;
+  color: #98a2b3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.popup__tile-right {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.popup__tile-amount {
+  font-size: 14px;
+  font-weight: 700;
+  color: #101828;
+}
+
+.popup__badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+.popup__badge--ok {
+  background-color: #e3f5ea;
+  color: #16794b;
+}
+
+.popup__badge--busy,
+.popup__badge--muted {
+  background-color: #eff2f7;
+  color: #475467;
+}
+
+.popup__badge--error {
+  background-color: #fee4e2;
+  color: #b42318;
+}
+
+.popup__empty {
+  margin: 0;
+  font-size: 11.5px;
+  color: #98a2b3;
+}
+
+.popup__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.popup__footer-meta {
+  font-size: 10.5px;
+  color: #98a2b3;
+}
+
+.popup__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #2563eb;
+  cursor: pointer;
+}
+
+@media (prefers-color-scheme: dark) {
+  .popup {
+    border-color: #1f2b3e;
+    background-color: #0f1622;
+  }
+
+  .popup__name,
+  .popup__total,
+  .popup__tile-name,
+  .popup__tile-amount {
+    color: #e7ebf1;
+  }
+
+  .popup__icon-btn {
+    background-color: #1b2433;
+    color: #cbd5e1;
+  }
+
+  .popup__icon-btn:hover {
+    background-color: #243044;
+  }
+
+  .popup__tile {
+    border-color: #1b2433;
+    background-color: #131c2a;
+  }
+
+  .popup__badge--busy,
+  .popup__badge--muted {
+    background-color: #1b2433;
+    color: #cbd5e1;
+  }
+}

@@ -3,6 +3,7 @@
 //! Commands translate between the frontend and the domain in [`crate::core`].
 //! Keep them thin: validation and orchestration belong to the domain, not here.
 
+pub mod popup;
 pub mod tray;
 
 use serde::Serialize;
@@ -193,4 +194,23 @@ pub fn refresh_balances(app: AppHandle) {
 #[tauri::command]
 pub fn set_poll_interval(app: AppHandle, minutes: u32) -> Result<u32, String> {
     preferences::set_poll_interval_minutes(&app, minutes)
+}
+
+/// Shows the main window, optionally switching to a view, and closes the popup.
+#[tauri::command]
+pub fn show_window(app: AppHandle, view: Option<String>) {
+    tray::show_main_window(&app, view.as_deref());
+    popup::hide(&app);
+}
+
+/// Hides the tray popover, e.g. when the user presses Escape.
+#[tauri::command]
+pub fn hide_popup(app: AppHandle) {
+    popup::hide(&app);
+}
+
+/// Resizes the tray popover to fit its content. `height` is logical pixels.
+#[tauri::command]
+pub fn set_popup_size(app: AppHandle, height: f64) {
+    popup::set_size(&app, height);
 }

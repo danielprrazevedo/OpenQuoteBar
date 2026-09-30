@@ -46,6 +46,9 @@ pub fn run() {
             ui::get_balances,
             ui::refresh_balances,
             ui::set_poll_interval,
+            ui::show_window,
+            ui::hide_popup,
+            ui::set_popup_size,
         ])
         .setup(|app| {
             // Tray-only apps have no visible window, which macOS treats as an
@@ -69,13 +72,22 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                // Closing the window keeps the app resident in the tray; the
-                // window is hidden rather than destroyed.
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. } => {
+                // Closing a window keeps the app resident; the window is hidden
+                // rather than destroyed.
                 api.prevent_close();
                 let _ = window.hide();
             }
+            // The popover is transient: clicking anywhere else closes it.
+            WindowEvent::Focused(false)
+                if window.label() == ui::popup::POPUP_WINDOW
+                    && window.is_visible().unwrap_or(false) =>
+            {
+                let _ = window.hide();
+                ui::popup::note_hidden();
+            }
+            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

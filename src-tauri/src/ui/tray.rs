@@ -3,7 +3,7 @@
 use tauri::{
     image::Image,
     menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem},
-    tray::TrayIconBuilder,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     App, AppHandle, Emitter, Listener, Manager, Runtime,
 };
 
@@ -51,6 +51,20 @@ pub fn build(app: &App) -> tauri::Result<()> {
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip(APP_NAME)
         .menu(&menu)
+        // Left click opens the rich popover; the menu stays on right click.
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                position,
+                rect,
+                ..
+            } = event
+            {
+                crate::ui::popup::toggle(tray.app_handle(), position, rect);
+            }
+        })
         .on_menu_event(|app, event| match event.id.as_ref() {
             OPEN => show_main_window(app, None),
             REFRESH => crate::poller::request_refresh(app),
@@ -127,12 +141,16 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, report: &BalancesReport) -> tauri:
     // Keep the rows alive for as long as the menu borrows them.
     let mut preview: Vec<MenuItem<R>> = Vec::new();
 
+    // The preview rows are labels, not actions: clicking one does nothing (see
+    // the `_` arm of the menu handler). They are still created enabled because
+    // macOS dims a disabled item's text to a low-contrast grey, which hurts
+    // legibility; an enabled item draws at full contrast.
     for row in preview_rows(report) {
         preview.push(MenuItem::with_id(
             app,
             row.id,
             row.text,
-            false,
+            true,
             None::<&str>,
         )?);
     }
