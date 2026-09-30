@@ -147,6 +147,30 @@ To cut a release:
 The workflow fails the run when the tag does not match the version in `package.json` and
 `Cargo.toml`, so a release can never claim a version the app does not report.
 
+## Icons
+
+The artwork lives in `design/` as two SVGs, and those are the source of truth:
+
+| File                   | What it is                                            |
+| ---------------------- | ----------------------------------------------------- |
+| `design/app-icon.svg`  | The app mark: a dollar sign on a blue rounded square. |
+| `design/tray-icon.svg` | The same sign, monochrome, for the macOS menu bar.    |
+
+Regenerate the platform assets after editing either of them:
+
+```bash
+pnpm tauri icon design/app-icon.svg
+pnpm tauri icon design/tray-icon.svg -p 88 -o src-tauri/icons/tray
+```
+
+The second command produces the PNG the tray embeds. It is 88 px rather than 22 or 44 because the
+tray layer normalises the image to 18 points of height and scales the width to match, so a
+generously sized square is what keeps it crisp at every display density.
+
+On macOS the tray icon is a _template image_: the system uses its alpha channel as a mask and tints
+it for light and dark menu bars, which is why the tray source is monochrome. Windows has no
+equivalent, so it gets the app mark, which has its own background and reads on any taskbar colour.
+
 ## Project layout
 
 ```

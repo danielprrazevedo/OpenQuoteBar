@@ -1,0 +1,35 @@
+<!--
+  The OpenQuoteBar mark: a dollar sign, because the app is about balances.
+
+  This is the source of truth for the desktop icon set. Regenerate the platform
+  assets with:
+
+    pnpm tauri icon design/app-icon.svg
+
+  Drawn with strokes rather than a <text> element on purpose: the rasteriser
+  does load system fonts, but a mark that depends on which font happens to be
+  installed is a mark that renders differently on someone else's machine.
+-->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1024"
+  height="1024"
+  viewBox="0 0 1024 1024"
+  fill="none"
+>
+  <rect x="92" y="92" width="840" height="840" rx="188" fill="#2563EB" />
+
+  <g
+    transform="translate(287 287) scale(4.5)"
+    stroke="#FFFFFF"
+    stroke-width="11"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  >
+    <path
+      d="M 68 30 C 60 21 40 21 36 31 C 32 41 47 46 52 50 C 58 55 70 60 65 70 C 60 79 39 79 33 70"
+    />
+    <line x1="50" y1="12" x2="50" y2="88" />
+  </g>
+</svg>
