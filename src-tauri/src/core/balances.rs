@@ -147,6 +147,10 @@ pub struct CurrencyTotal {
 ///
 /// Amounts in different currencies are never added together, because that would
 /// be a made-up number.
+///
+/// A currency that adds up to zero is dropped when there is something else to
+/// show, since `$10.00` next to `CN¥0.00` is noise. It is kept when it is all
+/// there is: an account at zero should say so, not show nothing.
 pub fn totals(balances: &[ProviderBalance]) -> Vec<CurrencyTotal> {
     let mut totals: Vec<CurrencyTotal> = Vec::new();
 
@@ -172,7 +176,22 @@ pub fn totals(balances: &[ProviderBalance]) -> Vec<CurrencyTotal> {
     // Stable order, so the UI does not reshuffle between refreshes.
     totals.sort_by(|left, right| left.currency.cmp(&right.currency));
 
-    totals
+    let worth_showing: Vec<CurrencyTotal> = totals
+        .iter()
+        .filter(|total| !renders_as_zero(total.amount))
+        .cloned()
+        .collect();
+
+    if worth_showing.is_empty() {
+        totals
+    } else {
+        worth_showing
+    }
+}
+
+/// Whether an amount reads as `0.00`, which is what the user actually sees.
+fn renders_as_zero(amount: f64) -> bool {
+    amount.abs() < 0.005
 }
 
 /// Everything the UI needs to draw the balances: the totals, and the rows they
@@ -374,6 +393,72 @@ mod tests {
 
         assert_eq!(totals.len(), 1);
         assert_eq!(totals[0].amount, 10.0);
+    }
+
+    /// A provider reporting several currencies at once.
+    fn multi(provider_id: &str, amounts: &[(f64, &str)]) -> ProviderBalance {
+        let mut entry = provider(provider_id, true);
+        entry.apply_success(BalanceSnapshot {
+            provider_id: provider_id.to_string(),
+            display_name: provider_id.to_string(),
+            amounts: amounts
+                .iter()
+                .map(|(amount, currency)| BalanceAmount {
+                    amount: *amount,
+                    currency: (*currency).to_string(),
+                    label: format!("{currency} balance"),
+                })
+                .collect(),
+            fetched_at: unix_now(),
+        });
+        entry
+    }
+
+    #[test]
+    fn a_zero_currency_is_dropped_when_another_one_has_money() {
+        let totals = totals(&[multi("deepseek", &[(0.0, "CNY"), (9.42, "USD")])]);
+
+        // The CNY row would only add clutter next to the USD one.
+        assert_eq!(
+            totals,
+            vec![CurrencyTotal {
+                currency: "USD".to_string(),
+                amount: 9.42
+            }]
+        );
+    }
+
+    #[test]
+    fn a_lone_zero_total_is_still_reported() {
+        let totals = totals(&[multi("deepseek", &[(0.0, "USD")])]);
+
+        // Nothing else to show, so the zero is the answer.
+        assert_eq!(
+            totals,
+            vec![CurrencyTotal {
+                currency: "USD".to_string(),
+                amount: 0.0
+            }]
+        );
+    }
+
+    #[test]
+    fn every_currency_is_kept_when_they_are_all_zero() {
+        let totals = totals(&[multi("deepseek", &[(0.0, "CNY"), (0.0, "USD")])]);
+
+        // Dropping both would leave the hero with nothing at all.
+        assert_eq!(totals.len(), 2);
+        assert_eq!(totals[0].currency, "CNY");
+        assert_eq!(totals[1].currency, "USD");
+    }
+
+    #[test]
+    fn an_amount_that_rounds_to_zero_counts_as_zero() {
+        let totals = totals(&[multi("deepseek", &[(0.001, "CNY"), (9.42, "USD")])]);
+
+        // It would render as `CN¥0.00`, so it is noise all the same.
+        assert_eq!(totals.len(), 1);
+        assert_eq!(totals[0].currency, "USD");
     }
 
     #[test]
